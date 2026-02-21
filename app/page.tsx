@@ -21,25 +21,36 @@ export default function Home() {
   const [fileType, setFileType] = useState<FileType>('image');
 
   const handleFileSelect = async (file: File) => {
+    console.log('[HomePage] File selected:', file.name, file.type, file.size);
+
     try {
       // 파일 타입 확인
       const isPDF = file.type === 'application/pdf';
       setFileType(isPDF ? 'pdf' : 'image');
+      console.log('[HomePage] File type:', isPDF ? 'PDF' : 'Image');
 
       if (isPDF) {
         // PDF 처리
+        console.log('[HomePage] Starting PDF processing');
         setStage('processing');
-        await extractFromPDF(file, 1); // 첫 페이지만 처리
+        const result = await extractFromPDF(file, 1); // 첫 페이지만 처리
+        console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
         setStage('editing');
       } else {
         // 이미지 처리 (기존 OCR)
+        console.log('[HomePage] Starting image upload');
         const data = await uploadImage(file);
+        console.log('[HomePage] Image uploaded:', data.width, 'x', data.height);
+
         setStage('processing');
-        await extractText(data.dataUrl, data.width, data.height);
+        console.log('[HomePage] Starting OCR processing');
+        const regions = await extractText(data.dataUrl, data.width, data.height);
+        console.log('[HomePage] OCR complete, text regions:', regions.length);
         setStage('editing');
       }
     } catch (err) {
-      console.error('Error processing file:', err);
+      console.error('[HomePage] Error processing file:', err);
+      alert('파일 처리 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
       setStage('upload');
     }
   };

@@ -88,17 +88,14 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate }: PDFCan
     };
   }, [canvas, onTextUpdate]);
 
-  if (!isReady) {
-    return (
-      <div className="flex items-center justify-center w-full h-full bg-gray-100 rounded-lg">
-        <p className="text-gray-500">캔버스 초기화 중...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="relative">
-      {isLoading && (
+      {!isReady && (
+        <div className="flex items-center justify-center w-full min-h-[400px] bg-gray-100 rounded-lg">
+          <p className="text-gray-500">캔버스 초기화 중...</p>
+        </div>
+      )}
+      {isLoading && isReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
           <p className="text-gray-500">PDF 렌더링 중...</p>
         </div>

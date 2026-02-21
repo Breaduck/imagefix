@@ -35,8 +35,12 @@ export function CanvasEditor({
 
   // 배경 이미지 로드
   useEffect(() => {
-    if (!canvas || !imageUrl) return;
+    if (!canvas || !imageUrl) {
+      console.log('[CanvasEditor] Waiting for canvas or imageUrl', { canvas: !!canvas, imageUrl: !!imageUrl });
+      return;
+    }
 
+    console.log('[CanvasEditor] Loading background image');
     setIsLoading(true);
 
     // 이미지 엘리먼트 로드
@@ -45,44 +49,66 @@ export function CanvasEditor({
     img.src = imageUrl;
 
     img.onload = () => {
+      console.log('[CanvasEditor] Image loaded, adding to canvas');
       setBackgroundImg(img);
 
       // 캔버스에 배경 이미지 추가
-      addBackgroundImage(canvas, imageUrl).then(() => {
-        setIsLoading(false);
-      });
+      addBackgroundImage(canvas, imageUrl)
+        .then(() => {
+          console.log('[CanvasEditor] Background image added successfully');
+          setIsLoading(false);
+        })
+        .catch((error) => {
+          console.error('[CanvasEditor] Failed to add background image:', error);
+          setIsLoading(false);
+        });
     };
 
-    img.onerror = () => {
-      console.error('Failed to load background image');
+    img.onerror = (error) => {
+      console.error('[CanvasEditor] Failed to load background image:', error);
       setIsLoading(false);
     };
   }, [canvas, imageUrl]);
 
   // 텍스트 영역 렌더링
   useEffect(() => {
-    if (!canvas || !backgroundImg || textRegions.length === 0) return;
+    if (!canvas || !backgroundImg) {
+      console.log('[CanvasEditor] Waiting for canvas or backgroundImg', { canvas: !!canvas, backgroundImg: !!backgroundImg });
+      return;
+    }
 
-    // 기존 텍스트 레이어 제거
-    const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
-    const existingMasks = canvas.getObjects().filter((obj: any) => obj.layerName === 'background-mask');
+    if (textRegions.length === 0) {
+      console.log('[CanvasEditor] No text regions to render');
+      return;
+    }
 
-    existingTexts.forEach((obj) => canvas.remove(obj));
-    existingMasks.forEach((obj) => canvas.remove(obj));
+    console.log('[CanvasEditor] Rendering', textRegions.length, 'text regions');
 
-    // 각 텍스트 영역에 대해 배경색 추출 및 렌더링
-    textRegions.forEach((region) => {
-      const backgroundColor = extractBackgroundColor(backgroundImg, {
-        x0: region.position.x,
-        y0: region.position.y,
-        x1: region.position.x + region.size.width,
-        y1: region.position.y + region.size.height,
+    try {
+      // 기존 텍스트 레이어 제거
+      const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
+      const existingMasks = canvas.getObjects().filter((obj: any) => obj.layerName === 'background-mask');
+
+      existingTexts.forEach((obj) => canvas.remove(obj));
+      existingMasks.forEach((obj) => canvas.remove(obj));
+
+      // 각 텍스트 영역에 대해 배경색 추출 및 렌더링
+      textRegions.forEach((region) => {
+        const backgroundColor = extractBackgroundColor(backgroundImg, {
+          x0: region.position.x,
+          y0: region.position.y,
+          x1: region.position.x + region.size.width,
+          y1: region.position.y + region.size.height,
+        });
+
+        renderTextRegions(canvas, [region], backgroundColor);
       });
 
-      renderTextRegions(canvas, [region], backgroundColor);
-    });
-
-    canvas.renderAll();
+      canvas.renderAll();
+      console.log('[CanvasEditor] Text regions rendered successfully');
+    } catch (error) {
+      console.error('[CanvasEditor] Failed to render text regions:', error);
+    }
   }, [canvas, backgroundImg, textRegions]);
 
   // 텍스트 선택 이벤트
@@ -131,17 +157,14 @@ export function CanvasEditor({
     };
   }, [canvas, onTextUpdate]);
 
-  if (!isReady) {
-    return (
-      <div className="flex items-center justify-center w-full h-full bg-gray-100 rounded-lg">
-        <p className="text-gray-500">캔버스 초기화 중...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="relative">
-      {isLoading && (
+      {!isReady && (
+        <div className="flex items-center justify-center w-full min-h-[400px] bg-gray-100 rounded-lg">
+          <p className="text-gray-500">캔버스 초기화 중...</p>
+        </div>
+      )}
+      {isLoading && isReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
           <p className="text-gray-500">이미지 로딩 중...</p>
         </div>

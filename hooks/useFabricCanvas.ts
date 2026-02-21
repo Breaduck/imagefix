@@ -23,17 +23,28 @@ export function useFabricCanvas(
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current) {
+      console.log('[useFabricCanvas] Canvas ref not ready');
+      return;
+    }
 
-    // 캔버스 초기화
-    const fabricCanvas = initCanvas(canvasRef.current, width, height);
-    setCanvas(fabricCanvas);
-    setIsReady(true);
+    console.log('[useFabricCanvas] Initializing canvas:', width, 'x', height);
+
+    try {
+      // 캔버스 초기화
+      const fabricCanvas = initCanvas(canvasRef.current, width, height);
+      setCanvas(fabricCanvas);
+      setIsReady(true);
+      console.log('[useFabricCanvas] Canvas initialized successfully');
+    } catch (error) {
+      console.error('[useFabricCanvas] Failed to initialize canvas:', error);
+    }
 
     // 정리 함수
     return () => {
-      if (fabricCanvas) {
-        fabricCanvas.dispose();
+      if (canvas) {
+        console.log('[useFabricCanvas] Disposing canvas');
+        canvas.dispose();
       }
     };
   }, [width, height]);
