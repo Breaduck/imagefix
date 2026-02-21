@@ -19,6 +19,7 @@ export interface CanvasEditorProps {
   textRegions: TextRegion[];
   onTextSelect?: (regionId: string | null) => void;
   onTextUpdate?: (regionId: string, newText: string) => void;
+  onCanvasReady?: (canvas: fabric.Canvas) => void;
 }
 
 export function CanvasEditor({
@@ -28,10 +29,18 @@ export function CanvasEditor({
   textRegions,
   onTextSelect,
   onTextUpdate,
+  onCanvasReady,
 }: CanvasEditorProps) {
   const { canvas, canvasRef, isReady } = useFabricCanvas(imageWidth, imageHeight);
   const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Canvas ready callback
+  useEffect(() => {
+    if (canvas && isReady && onCanvasReady) {
+      onCanvasReady(canvas);
+    }
+  }, [canvas, isReady, onCanvasReady]);
 
   // 배경 이미지 로드
   useEffect(() => {

@@ -28,6 +28,12 @@ export function useFabricCanvas(
       return;
     }
 
+    // 이미 초기화된 경우 스킷
+    if (canvas) {
+      console.log('[useFabricCanvas] Canvas already initialized, skipping');
+      return;
+    }
+
     console.log('[useFabricCanvas] Initializing canvas:', width, 'x', height);
 
     try {
@@ -36,18 +42,16 @@ export function useFabricCanvas(
       setCanvas(fabricCanvas);
       setIsReady(true);
       console.log('[useFabricCanvas] Canvas initialized successfully');
+
+      // 정리 함수
+      return () => {
+        console.log('[useFabricCanvas] Disposing canvas');
+        fabricCanvas.dispose();
+      };
     } catch (error) {
       console.error('[useFabricCanvas] Failed to initialize canvas:', error);
     }
-
-    // 정리 함수
-    return () => {
-      if (canvas) {
-        console.log('[useFabricCanvas] Disposing canvas');
-        canvas.dispose();
-      }
-    };
-  }, [width, height]);
+  }, [canvasRef.current, width, height]);
 
   return {
     canvas,

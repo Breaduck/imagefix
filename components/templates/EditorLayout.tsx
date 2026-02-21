@@ -31,6 +31,9 @@ export function EditorLayout({
   const [textRegions, setTextRegions] = useState<TextRegion[]>(initialTextRegions);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const canvasRefCallback = useCallback((fabricCanvas: fabric.Canvas | null) => {
+    setCanvas(fabricCanvas);
+  }, []);
 
   const { exportAsPNG, exportAsJPEG, copyToClipboard, isClipboardAvailable } = useExport();
 
@@ -163,6 +166,7 @@ export function EditorLayout({
             textRegions={textRegions}
             onTextSelect={handleTextSelect}
             onTextUpdate={handleTextUpdate}
+            onCanvasReady={canvasRefCallback}
           />
         </div>
 
