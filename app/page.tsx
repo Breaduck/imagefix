@@ -4,32 +4,50 @@ import { useState } from 'react';
 import { DropZone } from '@/components/molecules/DropZone';
 import { LoadingSpinner } from '@/components/atoms/LoadingSpinner';
 import { EditorLayout } from '@/components/templates/EditorLayout';
+import { PDFEditorLayout } from '@/components/templates/PDFEditorLayout';
 import { useImageUpload } from '@/hooks/useImageUpload';
 import { useTextExtraction } from '@/hooks/useTextExtraction';
+import { usePDFExtraction } from '@/hooks/usePDFExtraction';
+import { PDFPageData } from '@/types/pdf.types';
+
+type FileType = 'image' | 'pdf';
 
 export default function Home() {
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
-  const { isProcessing, progress, error, textRegions, extractText, clearResults } = useTextExtraction();
+  const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction();
+  const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
 
   const [stage, setStage] = useState<'upload' | 'processing' | 'editing'>('upload');
+  const [fileType, setFileType] = useState<FileType>('image');
 
   const handleFileSelect = async (file: File) => {
     try {
-      const data = await uploadImage(file);
-      setStage('processing');
+      // 파일 타입 확인
+      const isPDF = file.type === 'application/pdf';
+      setFileType(isPDF ? 'pdf' : 'image');
 
-      // OCR + 스타일 추출
-      await extractText(data.dataUrl, data.width, data.height);
-      setStage('editing');
+      if (isPDF) {
+        // PDF 처리
+        setStage('processing');
+        await extractFromPDF(file, 1); // 첫 페이지만 처리
+        setStage('editing');
+      } else {
+        // 이미지 처리 (기존 OCR)
+        const data = await uploadImage(file);
+        setStage('processing');
+        await extractText(data.dataUrl, data.width, data.height);
+        setStage('editing');
+      }
     } catch (err) {
-      console.error('Error processing image:', err);
+      console.error('Error processing file:', err);
       setStage('upload');
     }
   };
 
   const handleReset = () => {
     clearImage();
-    clearResults();
+    clearOCRResults();
+    clearPDFResults();
     setStage('upload');
   };
 
@@ -61,8 +79,8 @@ export default function Home() {
             <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">사용 방법</h3>
               <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                <li>NotebookLM PDF 스크린샷 또는 텍스트가 포함된 이미지를 업로드하세요.</li>
-                <li>OCR이 자동으로 텍스트를 추출합니다 (한글 + 영문 지원).</li>
+                <li><strong>PDF 업로드</strong>: NotebookLM PDF를 업로드하면 텍스트 레이어에서 직접 추출 (폰트 정보 포함)</li>
+                <li><strong>이미지 업로드</strong>: PDF 스크린샷이나 이미지는 OCR로 텍스트 추출 (한글 + 영문)</li>
                 <li>캔버스에서 텍스트를 직접 클릭하고 편집할 수 있습니다.</li>
                 <li>폰트 크기, 색상, 회전 각도를 조정할 수 있습니다.</li>
                 <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
@@ -148,23 +166,28 @@ export default function Home() {
       {stage === 'processing' && (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <LoadingSpinner size="lg" message="텍스트 추출 중..." />
-            {progress > 0 && (
+            <LoadingSpinner
+              size="lg"
+              message={fileType === 'pdf' ? 'PDF 처리 중...' : '텍스트 추출 중...'}
+            />
+            {((fileType === 'pdf' ? pdfProgress : ocrProgress) > 0) && (
               <div className="mt-6">
                 <div className="w-96 mx-auto">
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-600 transition-all duration-300"
-                      style={{ width: `${progress}%` }}
+                      style={{ width: `${fileType === 'pdf' ? pdfProgress : ocrProgress}%` }}
                     />
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">{Math.round(progress)}%</p>
+                  <p className="mt-2 text-sm text-gray-600">
+                    {Math.round(fileType === 'pdf' ? pdfProgress : ocrProgress)}%
+                  </p>
                 </div>
               </div>
             )}
-            {error && (
+            {(pdfError || ocrError) && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 max-w-md mx-auto">
-                오류: {error}
+                오류: {pdfError || ocrError}
               </div>
             )}
           </div>
@@ -172,14 +195,20 @@ export default function Home() {
       )}
 
       {/* Editing Stage */}
-      {stage === 'editing' && imageData && (
-        <EditorLayout
-          imageUrl={imageData.dataUrl}
-          imageWidth={imageData.width}
-          imageHeight={imageData.height}
-          textRegions={textRegions}
-          onReset={handleReset}
-        />
+      {stage === 'editing' && (
+        <>
+          {fileType === 'pdf' && pageData ? (
+            <PDFEditorLayout pageData={pageData} onReset={handleReset} />
+          ) : fileType === 'image' && imageData ? (
+            <EditorLayout
+              imageUrl={imageData.dataUrl}
+              imageWidth={imageData.width}
+              imageHeight={imageData.height}
+              textRegions={textRegions}
+              onReset={handleReset}
+            />
+          ) : null}
+        </>
       )}
     </main>
   );

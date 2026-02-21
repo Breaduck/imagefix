@@ -42,10 +42,12 @@ export function DropZone({ onFileSelect, disabled = false }: DropZoneProps) {
       if (disabled) return;
 
       const files = Array.from(e.dataTransfer.files);
-      const imageFile = files.find((file) => file.type.startsWith('image/'));
+      const acceptedFile = files.find(
+        (file) => file.type.startsWith('image/') || file.type === 'application/pdf'
+      );
 
-      if (imageFile) {
-        onFileSelect(imageFile);
+      if (acceptedFile) {
+        onFileSelect(acceptedFile);
       }
     },
     [disabled, onFileSelect]
@@ -75,7 +77,7 @@ export function DropZone({ onFileSelect, disabled = false }: DropZoneProps) {
     >
       <input
         type="file"
-        accept="image/png,image/jpeg,image/jpg,image/webp"
+        accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
         onChange={handleFileInput}
         disabled={disabled}
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
@@ -98,8 +100,8 @@ export function DropZone({ onFileSelect, disabled = false }: DropZoneProps) {
         </svg>
 
         <div className="text-sm text-gray-600 dark:text-gray-400">
-          <p className="font-semibold">이미지를 드래그하거나 클릭하여 업로드</p>
-          <p className="mt-1">PNG, JPG, WEBP (최대 10MB)</p>
+          <p className="font-semibold">이미지 또는 PDF를 드래그하거나 클릭하여 업로드</p>
+          <p className="mt-1">PNG, JPG, WEBP, PDF (최대 10MB)</p>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { BoundingBox } from './ocr.types';
 
 export interface TextStyle {
   fontSize: number;
-  fontFamily: 'Pretendard';
+  fontFamily: string; // Changed from 'Pretendard' to support PDF fonts
   color: string;
   rotation: number;
   align: 'left' | 'center' | 'right';
