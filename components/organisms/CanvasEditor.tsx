@@ -137,8 +137,26 @@ export function CanvasEditor({
         renderTextRegions(canvas, [region], backgroundColor);
       });
 
+      // 레이어 순서 강제 재정렬
+      console.log('[CanvasEditor] Reordering layers...');
+      const allObjects = canvas.getObjects();
+      const backgroundImages = allObjects.filter((obj: any) => obj.layerName === 'background-image');
+      const masks = allObjects.filter((obj: any) => obj.layerName === 'background-mask');
+      const texts = allObjects.filter((obj: any) => obj.layerName === 'editable-text');
+
+      console.log('[CanvasEditor] Layer counts:', {
+        backgroundImages: backgroundImages.length,
+        masks: masks.length,
+        texts: texts.length,
+      });
+
+      // 순서: 배경 이미지 → 마스크 → 텍스트
+      backgroundImages.forEach((obj) => canvas.sendToBack(obj));
+      masks.forEach((obj) => canvas.bringToFront(obj));
+      texts.forEach((obj) => canvas.bringToFront(obj));
+
       canvas.renderAll();
-      console.log('[CanvasEditor] Text regions rendered successfully');
+      console.log('[CanvasEditor] Text regions rendered successfully with proper layering');
     } catch (error) {
       console.error('[CanvasEditor] Failed to render text regions:', error);
     }

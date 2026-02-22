@@ -46,18 +46,18 @@ export function convertOCRResultsToTextRegions(
 function estimateFontSize(bbox: BoundingBox, imageHeight: number): number {
   const bboxHeight = bbox.y1 - bbox.y0;
 
-  // 픽셀 높이를 폰트 포인트로 변환
-  // 일반적으로 1pt ≈ 1.333px (96 DPI 기준)
-  const pixelToPt = 0.75;
-  let fontSize = bboxHeight * pixelToPt;
+  // Tesseract의 bbox 높이는 실제 텍스트 높이와 거의 일치하므로
+  // 팩터를 1.0으로 사용 (bbox 높이 ≈ 폰트 크기)
+  // 약간의 조정을 위해 0.9를 사용 (약간 작게)
+  const adjustmentFactor = 0.9;
+  let fontSize = bboxHeight * adjustmentFactor;
 
-  // 일반적인 폰트 크기로 반올림
-  const commonSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64];
-  fontSize = commonSizes.reduce((prev, curr) =>
-    Math.abs(curr - fontSize) < Math.abs(prev - fontSize) ? curr : prev
-  );
+  // 최소 폰트 크기 제한
+  if (fontSize < 8) fontSize = 8;
 
-  return fontSize;
+  console.log(`[FontSize] bbox height: ${bboxHeight}px → fontSize: ${Math.round(fontSize)}px`);
+
+  return Math.round(fontSize);
 }
 
 /**
