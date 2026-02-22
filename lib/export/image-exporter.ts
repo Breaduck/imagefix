@@ -55,3 +55,88 @@ export function generateFilename(prefix: string = 'edited-image', format: 'png' 
   const extension = format === 'jpeg' ? 'jpg' : format;
   return `${prefix}-${timestamp}.${extension}`;
 }
+
+/**
+ * "진짜 편집" Export: 원본 텍스트를 완전히 제거한 배경 + 새 텍스트
+ *
+ * 사용법:
+ * ```typescript
+ * import { exportWithCleanBackground } from '@/lib/export/image-exporter';
+ *
+ * const dataUrl = await exportWithCleanBackground(
+ *   fabricCanvas,
+ *   originalBackgroundImage,
+ *   textRegions
+ * );
+ * ```
+ */
+export async function exportWithCleanBackground(
+  canvas: fabric.Canvas,
+  originalBackground: HTMLCanvasElement,
+  textRegions: any[],
+  options: ExportOptions = { format: 'png', quality: 1.0, scale: 1 }
+): Promise<string> {
+  console.log('[Export] Creating clean background export');
+
+  // 동적 import (text-remover가 클라이언트 전용)
+  const { removeAllText } = await import('@/lib/image/text-remover');
+
+  // 1. 원본 배경에서 텍스트 제거
+  const cleanBackground = await removeAllText(originalBackground, textRegions);
+  console.log('[Export] Text removed from background');
+
+  // 2. 임시 캔버스 생성
+  const tempCanvas = new fabric.Canvas(document.createElement('canvas'), {
+    width: canvas.width,
+    height: canvas.height,
+  });
+
+  // 3. 깨끗한 배경 추가
+  const bgImage = await new Promise<fabric.Image>((resolve) => {
+    fabric.Image.fromURL(
+      cleanBackground.toDataURL(),
+      (img) => {
+        img.set({
+          left: 0,
+          top: 0,
+          selectable: false,
+          evented: false,
+        });
+        resolve(img);
+      },
+      { crossOrigin: 'anonymous' }
+    );
+  });
+
+  tempCanvas.add(bgImage);
+
+  // 4. 텍스트 객체만 복사
+  const textObjects = canvas.getObjects().filter((obj: any) => {
+    return obj.type === 'i-text' || obj.type === 'text' || obj.type === 'textbox';
+  });
+
+  for (const textObj of textObjects) {
+    const cloned = await new Promise<fabric.Object>((resolve) => {
+      textObj.clone((clonedObj: fabric.Object) => {
+        resolve(clonedObj);
+      });
+    });
+    tempCanvas.add(cloned);
+  }
+
+  tempCanvas.renderAll();
+
+  // 5. Export
+  const dataUrl = tempCanvas.toDataURL({
+    format: options.format,
+    quality: options.quality,
+    multiplier: options.scale,
+  });
+
+  // 6. 임시 캔버스 정리
+  tempCanvas.dispose();
+
+  console.log('[Export] ✅ Clean background export complete');
+
+  return dataUrl;
+}

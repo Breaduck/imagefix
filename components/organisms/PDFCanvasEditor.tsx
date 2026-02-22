@@ -4,24 +4,50 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '@/hooks/useFabricCanvas';
 import { PDFPageData, PDFTextRegion } from '@/types/pdf.types';
 import { addPDFPageAsBackground, renderPDFTextRegions } from '@/lib/pdf/pdf-canvas-renderer';
+import { CanvasHistory } from '@/lib/canvas/history-manager';
 
 export interface PDFCanvasEditorProps {
   pageData: PDFPageData;
   onTextSelect?: (regionId: string | null) => void;
   onTextUpdate?: (regionId: string, newText: string) => void;
+  onHistoryReady?: (history: CanvasHistory) => void;
 }
 
-export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate }: PDFCanvasEditorProps) {
+export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate, onHistoryReady }: PDFCanvasEditorProps) {
   const { canvas, canvasRef, isReady } = useFabricCanvas(
     pageData.viewport.width,
     pageData.viewport.height
   );
   const [isLoading, setIsLoading] = useState(true);
+  const historyRef = useRef<CanvasHistory | null>(null);
+
+  // 히스토리 매니저 초기화 및 키보드 단축키 설정
+  useEffect(() => {
+    if (!canvas || !isReady) return;
+
+    // 히스토리 매니저 생성
+    historyRef.current = new CanvasHistory(canvas);
+
+    // 키보드 단축키 설정 (Ctrl+Z, Ctrl+Y)
+    const cleanup = historyRef.current.setupKeyboardShortcuts();
+
+    // 부모 컴포넌트에 히스토리 매니저 전달
+    if (onHistoryReady && historyRef.current) {
+      onHistoryReady(historyRef.current);
+    }
+
+    console.log('[PDFCanvasEditor] History manager initialized with keyboard shortcuts');
+
+    return () => {
+      cleanup();
+      historyRef.current = null;
+    };
+  }, [canvas, isReady, onHistoryReady]);
 
   // PDF 페이지 렌더링
   useEffect(() => {
@@ -77,21 +103,22 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate }: PDFCan
     };
   }, [canvas, onTextSelect]);
 
-  // 텍스트 수정 이벤트
+  // 텍스트 수정 이벤트 (편집 완료 시에만)
   useEffect(() => {
     if (!canvas || !onTextUpdate) return;
 
     const handleTextChange = (e: fabric.IEvent) => {
-      const target = e.target as fabric.Text;
+      const target = e.target as fabric.IText;
       if (target && (target as any).pdfRegionId && target.text) {
         onTextUpdate((target as any).pdfRegionId, target.text);
       }
     };
 
-    canvas.on('text:changed', handleTextChange);
+    // 편집이 끝날 때만 업데이트 (편집 중에는 업데이트하지 않음)
+    canvas.on('text:editing:exited', handleTextChange);
 
     return () => {
-      canvas.off('text:changed', handleTextChange);
+      canvas.off('text:editing:exited', handleTextChange);
     };
   }, [canvas, onTextUpdate]);
 

@@ -4,13 +4,13 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '@/hooks/useFabricCanvas';
 import { TextRegion } from '@/types/canvas.types';
 import { addBackgroundImage } from '@/lib/canvas/fabric-utils';
-import { renderTextRegions } from '@/lib/canvas/text-renderer';
-import { extractBackgroundColor } from '@/lib/style/color-extractor';
+import { bakeTextMasksToBackground } from '@/lib/canvas/background-baker';
+import { CanvasHistory } from '@/lib/canvas/history-manager';
 
 export interface CanvasEditorProps {
   imageUrl: string;
@@ -20,6 +20,7 @@ export interface CanvasEditorProps {
   onTextSelect?: (regionId: string | null) => void;
   onTextUpdate?: (regionId: string, newText: string) => void;
   onCanvasReady?: (canvas: fabric.Canvas) => void;
+  onHistoryReady?: (history: CanvasHistory) => void;
 }
 
 export function CanvasEditor({
@@ -30,10 +31,12 @@ export function CanvasEditor({
   onTextSelect,
   onTextUpdate,
   onCanvasReady,
+  onHistoryReady,
 }: CanvasEditorProps) {
   const { canvas, canvasRef, isReady } = useFabricCanvas(imageWidth, imageHeight);
   const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const historyRef = useRef<CanvasHistory | null>(null);
 
   // Canvas ready callback
   useEffect(() => {
@@ -41,6 +44,29 @@ export function CanvasEditor({
       onCanvasReady(canvas);
     }
   }, [canvas, isReady, onCanvasReady]);
+
+  // 히스토리 매니저 초기화 및 키보드 단축키 설정
+  useEffect(() => {
+    if (!canvas || !isReady) return;
+
+    // 히스토리 매니저 생성
+    historyRef.current = new CanvasHistory(canvas);
+
+    // 키보드 단축키 설정 (Ctrl+Z, Ctrl+Y)
+    const cleanup = historyRef.current.setupKeyboardShortcuts();
+
+    // 부모 컴포넌트에 히스토리 매니저 전달
+    if (onHistoryReady && historyRef.current) {
+      onHistoryReady(historyRef.current);
+    }
+
+    console.log('[CanvasEditor] History manager initialized with keyboard shortcuts');
+
+    return () => {
+      cleanup();
+      historyRef.current = null;
+    };
+  }, [canvas, isReady, onHistoryReady]);
 
   // 배경 이미지 로드
   useEffect(() => {
@@ -93,7 +119,7 @@ export function CanvasEditor({
     };
   }, [canvas, imageUrl]);
 
-  // 텍스트 영역 렌더링
+  // 텍스트 영역 렌더링 with Background Baking (No Mask Objects!)
   useEffect(() => {
     if (!canvas || !backgroundImg) {
       console.log('[CanvasEditor] Waiting for canvas or backgroundImg', { canvas: !!canvas, backgroundImg: !!backgroundImg });
@@ -105,61 +131,111 @@ export function CanvasEditor({
       return;
     }
 
-    console.log('[CanvasEditor] Rendering', textRegions.length, 'text regions');
+    console.log('[CanvasEditor] 🔥 Rendering', textRegions.length, 'text regions with background baking');
 
-    try {
-      // 기존 텍스트 레이어 제거
-      const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
-      const existingMasks = canvas.getObjects().filter((obj: any) => obj.layerName === 'background-mask');
+    let isMounted = true;
 
-      existingTexts.forEach((obj) => canvas.remove(obj));
-      existingMasks.forEach((obj) => canvas.remove(obj));
+    const renderWithBaking = async () => {
+      try {
+        // Pause history tracking during programmatic setup
+        if (historyRef.current) {
+          historyRef.current.startProgrammaticUpdate();
+        }
 
-      // 각 텍스트 영역에 대해 배경색 추출 및 렌더링
-      textRegions.forEach((region, index) => {
-        const backgroundColor = extractBackgroundColor(backgroundImg, {
-          x0: region.position.x,
-          y0: region.position.y,
-          x1: region.position.x + region.size.width,
-          y1: region.position.y + region.size.height,
+        // 기존 텍스트 레이어 제거
+        const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
+        existingTexts.forEach((obj) => canvas.remove(obj));
+
+        // Step 1: Create background canvas from image
+        const bgCanvas = document.createElement('canvas');
+        const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+
+        if (!bgCtx) {
+          throw new Error('Failed to get canvas context');
+        }
+
+        bgCanvas.width = backgroundImg.width;
+        bgCanvas.height = backgroundImg.height;
+        bgCtx.drawImage(backgroundImg, 0, 0);
+
+        // Step 2: Bake text masks into background (NO FABRIC OBJECTS!)
+        console.log('[CanvasEditor] 🔥 Baking text masks to background...');
+        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, textRegions, {
+          method: 'smart',
+          padding: 10,
         });
 
-        console.log(`[CanvasEditor] Region ${index}:`, {
-          text: region.text,
-          position: region.position,
-          size: region.size,
-          fontSize: region.style.fontSize,
-          fontFamily: region.style.fontFamily,
-          color: region.style.color,
-          backgroundColor,
-        });
+        if (!isMounted) return;
 
-        renderTextRegions(canvas, [region], backgroundColor);
-      });
+        // Step 3: Set baked background as canvas background
+        console.log('[CanvasEditor] Setting baked background as canvas background');
+        const bakedDataUrl = bakedBackground.toDataURL();
 
-      // 레이어 순서 강제 재정렬
-      console.log('[CanvasEditor] Reordering layers...');
-      const allObjects = canvas.getObjects();
-      const backgroundImages = allObjects.filter((obj: any) => obj.layerName === 'background-image');
-      const masks = allObjects.filter((obj: any) => obj.layerName === 'background-mask');
-      const texts = allObjects.filter((obj: any) => obj.layerName === 'editable-text');
+        canvas.setBackgroundImage(
+          bakedDataUrl,
+          () => {
+            if (!isMounted) return;
 
-      console.log('[CanvasEditor] Layer counts:', {
-        backgroundImages: backgroundImages.length,
-        masks: masks.length,
-        texts: texts.length,
-      });
+            canvas.renderAll();
+            console.log('[CanvasEditor] ✅ Baked background set');
 
-      // 순서: 배경 이미지 → 마스크 → 텍스트
-      backgroundImages.forEach((obj) => canvas.sendToBack(obj));
-      masks.forEach((obj) => canvas.bringToFront(obj));
-      texts.forEach((obj) => canvas.bringToFront(obj));
+            // Step 4: Add only text objects (no masks!)
+            textRegions.forEach((region, index) => {
+              console.log(`[CanvasEditor] Adding text object ${index}:`, {
+                text: region.text.substring(0, 30),
+                position: region.position,
+                fontSize: region.style.fontSize,
+              });
 
-      canvas.renderAll();
-      console.log('[CanvasEditor] Text regions rendered successfully with proper layering');
-    } catch (error) {
-      console.error('[CanvasEditor] Failed to render text regions:', error);
-    }
+              const textObj = new fabric.IText(region.text, {
+                left: region.position.x,
+                top: region.position.y,
+                fontSize: region.style.fontSize || 16,
+                fontFamily: region.style.fontFamily || 'Pretendard, sans-serif',
+                fill: region.style.color || '#000000',
+                fontWeight: region.style.fontWeight || 'normal',
+                fontStyle: region.style.fontStyle || 'normal',
+                angle: region.style.rotation || 0,
+                selectable: true,
+                editable: true,
+              });
+
+              // Metadata for tracking
+              (textObj as any).regionId = region.id;
+              (textObj as any).layerName = 'editable-text';
+
+              canvas.add(textObj);
+            });
+
+            canvas.renderAll();
+
+            // Resume history tracking after setup is complete
+            if (historyRef.current) {
+              historyRef.current.endProgrammaticUpdate();
+            }
+
+            console.log('[CanvasEditor] ✅ Text objects added. Total objects:', canvas.getObjects().length);
+            console.log('[CanvasEditor] 🎉 Background baking complete - NO MASK OBJECTS!');
+          },
+          {
+            crossOrigin: 'anonymous',
+          }
+        );
+      } catch (error) {
+        console.error('[CanvasEditor] Failed to render with background baking:', error);
+
+        // Resume history tracking even on error
+        if (historyRef.current) {
+          historyRef.current.endProgrammaticUpdate();
+        }
+      }
+    };
+
+    renderWithBaking();
+
+    return () => {
+      isMounted = false;
+    };
   }, [canvas, backgroundImg, textRegions]);
 
   // 텍스트 선택 이벤트
@@ -190,21 +266,22 @@ export function CanvasEditor({
     };
   }, [canvas, onTextSelect]);
 
-  // 텍스트 수정 이벤트
+  // 텍스트 수정 이벤트 (편집 완료 시에만)
   useEffect(() => {
     if (!canvas || !onTextUpdate) return;
 
     const handleTextChange = (e: fabric.IEvent) => {
-      const target = e.target as fabric.Text;
+      const target = e.target as fabric.IText;
       if (target && (target as any).regionId && target.text) {
         onTextUpdate((target as any).regionId, target.text);
       }
     };
 
-    canvas.on('text:changed', handleTextChange);
+    // 편집이 끝날 때만 업데이트 (편집 중에는 업데이트하지 않음)
+    canvas.on('text:editing:exited', handleTextChange);
 
     return () => {
-      canvas.off('text:changed', handleTextChange);
+      canvas.off('text:editing:exited', handleTextChange);
     };
   }, [canvas, onTextUpdate]);
 

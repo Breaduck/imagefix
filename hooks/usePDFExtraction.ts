@@ -13,6 +13,8 @@ export interface UsePDFExtractionReturn {
   progress: number;
   error: string | null;
   pageData: PDFPageData | null;
+  totalPages: number;
+  currentPage: number;
   extractFromPDF: (file: File, pageNumber?: number) => Promise<PDFPageData>;
   clearResults: () => void;
 }
@@ -22,6 +24,8 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pageData, setPageData] = useState<PDFPageData | null>(null);
+  const [totalPages, setTotalPages] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
 
   /**
    * PDF에서 텍스트 추출
@@ -42,6 +46,9 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
         setProgress(40);
 
         console.log(`[usePDFExtraction] PDF loaded. Pages: ${pdf.numPages}`);
+
+        // 총 페이지 수 저장
+        setTotalPages(pdf.numPages);
 
         // 페이지 범위 확인
         if (pageNumber < 1 || pageNumber > pdf.numPages) {
@@ -66,6 +73,7 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
         }
 
         setPageData(data);
+        setCurrentPage(pageNumber);
         return data;
       } catch (err) {
         const errorMessage =
@@ -87,6 +95,8 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
     setPageData(null);
     setProgress(0);
     setError(null);
+    setTotalPages(0);
+    setCurrentPage(1);
   }, []);
 
   return {
@@ -94,6 +104,8 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
     progress,
     error,
     pageData,
+    totalPages,
+    currentPage,
     extractFromPDF,
     clearResults,
   };

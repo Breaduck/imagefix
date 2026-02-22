@@ -10,12 +10,12 @@ import { buildFontFamilyString } from './font-mapper';
 import { LayerName, LayerIndex, setLayerInfo } from '@/lib/canvas/layer-manager';
 
 /**
- * PDF TextRegion을 Fabric.js Text 객체로 변환
+ * PDF TextRegion을 Fabric.js IText 객체로 변환 (편집 가능)
  */
-export function createTextObjectFromPDF(region: PDFTextRegion): fabric.Text {
+export function createTextObjectFromPDF(region: PDFTextRegion): fabric.IText {
   const fontFamilyString = buildFontFamilyString(region.fontInfo);
 
-  const text = new fabric.Text(region.text, {
+  const text = new fabric.IText(region.text, {
     left: region.position.x,
     top: region.position.y,
     fontSize: region.style.fontSize,
@@ -23,6 +23,7 @@ export function createTextObjectFromPDF(region: PDFTextRegion): fabric.Text {
     fill: region.style.color,
     angle: region.style.rotation,
     selectable: true,
+    editable: true, // 더블클릭으로 텍스트 편집 가능
     hasControls: true,
     hasBorders: true,
   });
@@ -43,8 +44,8 @@ export function createTextObjectFromPDF(region: PDFTextRegion): fabric.Text {
 export function renderPDFTextRegions(
   canvas: fabric.Canvas,
   regions: PDFTextRegion[]
-): fabric.Text[] {
-  const textObjects: fabric.Text[] = [];
+): fabric.IText[] {
+  const textObjects: fabric.IText[] = [];
 
   regions.forEach((region) => {
     const text = createTextObjectFromPDF(region);

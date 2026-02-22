@@ -34,6 +34,9 @@ export function convertOCRResultsToTextRegions(
         rotation: estimateRotation(result.baseline),
         align: 'left',
         lineHeight: 1.2,
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        underline: false,
       },
       confidence: result.confidence,
     };
@@ -46,10 +49,10 @@ export function convertOCRResultsToTextRegions(
 function estimateFontSize(bbox: BoundingBox, imageHeight: number): number {
   const bboxHeight = bbox.y1 - bbox.y0;
 
-  // Tesseract의 bbox 높이는 실제 텍스트 높이와 거의 일치하므로
-  // 팩터를 1.0으로 사용 (bbox 높이 ≈ 폰트 크기)
-  // 약간의 조정을 위해 0.9를 사용 (약간 작게)
-  const adjustmentFactor = 0.9;
+  // Tesseract의 bbox 높이는 실제 텍스트 높이와 거의 일치
+  // 하지만 폰트는 보통 bbox보다 약간 작으므로 1.1을 곱해서 보정
+  // 이렇게 하면 텍스트가 bbox를 완전히 채우게 됨
+  const adjustmentFactor = 1.1;
   let fontSize = bboxHeight * adjustmentFactor;
 
   // 최소 폰트 크기 제한

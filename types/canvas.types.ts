@@ -12,6 +12,9 @@ export interface TextStyle {
   rotation: number;
   align: 'left' | 'center' | 'right';
   lineHeight: number;
+  fontWeight: 'normal' | 'bold';
+  fontStyle: 'normal' | 'italic';
+  underline: boolean;
 }
 
 export interface TextRegion {

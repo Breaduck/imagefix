@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { PDFCanvasEditor } from '@/components/organisms/PDFCanvasEditor';
 import { TextSidebar } from '@/components/organisms/TextSidebar';
 import { TextStyleControls } from '@/components/molecules/TextStyleControls';
@@ -13,13 +13,17 @@ import { PDFPageData, PDFTextRegion } from '@/types/pdf.types';
 import { TextRegion } from '@/types/canvas.types';
 import { useExport } from '@/hooks/useExport';
 import { fabric } from 'fabric';
+import { CanvasHistory } from '@/lib/canvas/history-manager';
 
 export interface PDFEditorLayoutProps {
   pageData: PDFPageData;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
   onReset: () => void;
 }
 
-export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
+export function PDFEditorLayout({ pageData, currentPage, totalPages, onPageChange, onReset }: PDFEditorLayoutProps) {
   // PDF TextRegion을 일반 TextRegion으로 변환
   const convertToTextRegions = (pdfRegions: PDFTextRegion[]): TextRegion[] => {
     return pdfRegions.map((region) => ({
@@ -34,6 +38,9 @@ export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
         rotation: region.style.rotation,
         align: 'left',
         lineHeight: 1.2,
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        underline: false,
       },
       confidence: 100, // PDF는 신뢰도 100%
     }));
@@ -44,6 +51,11 @@ export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
   );
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const historyRef = useRef<CanvasHistory | null>(null);
+
+  const historyRefCallback = useCallback((history: CanvasHistory) => {
+    historyRef.current = history;
+  }, []);
 
   const { exportAsPNG, exportAsJPEG, copyToClipboard, isClipboardAvailable } = useExport();
 
@@ -74,12 +86,17 @@ export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
       const objects = canvas.getObjects();
       const textObject = objects.find(
         (obj: any) => obj.pdfRegionId === selectedRegionId
-      ) as fabric.Text;
+      ) as fabric.IText;
 
       if (textObject) {
         if (style.fontSize !== undefined) textObject.set({ fontSize: style.fontSize });
         if (style.color !== undefined) textObject.set({ fill: style.color });
         if (style.rotation !== undefined) textObject.set({ angle: style.rotation });
+        if (style.fontFamily !== undefined) textObject.set({ fontFamily: style.fontFamily });
+        if (style.fontWeight !== undefined) textObject.set({ fontWeight: style.fontWeight });
+        if (style.fontStyle !== undefined) textObject.set({ fontStyle: style.fontStyle });
+        if (style.underline !== undefined) textObject.set({ underline: style.underline });
+        if (style.align !== undefined) textObject.set({ textAlign: style.align });
         canvas.renderAll();
       }
     },
@@ -139,9 +156,31 @@ export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
     }
   }, [canvas, copyToClipboard, isClipboardAvailable]);
 
+  const handleUndo = useCallback(() => {
+    if (historyRef.current) {
+      historyRef.current.undo();
+    }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (historyRef.current) {
+      historyRef.current.redo();
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      <ToolPanel onReset={onReset} onExport={handleExport} onCopy={handleCopy} disabled={!canvas} />
+      <ToolPanel
+        onReset={onReset}
+        onExport={handleExport}
+        onCopy={handleCopy}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        disabled={!canvas}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto p-4">
@@ -158,6 +197,7 @@ export function PDFEditorLayout({ pageData, onReset }: PDFEditorLayoutProps) {
             pageData={pageData}
             onTextSelect={handleTextSelect}
             onTextUpdate={handleTextUpdate}
+            onHistoryReady={historyRefCallback}
           />
         </div>
 

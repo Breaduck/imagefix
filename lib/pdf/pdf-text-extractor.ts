@@ -6,6 +6,7 @@
 
 import { PDFTextItem, PDFTextContent, PDFTextRegion, PDFPageData } from '@/types/pdf.types';
 import { mapPDFFont, buildFontFamilyString, extractFontStyle } from './font-mapper';
+import { mergePDFTextItems } from './line-merger';
 
 // Dynamic import for PDF.js (client-side only)
 let pdfjsLib: typeof import('pdfjs-dist') | null = null;
@@ -102,7 +103,7 @@ function parseTransform(transform: number[]): {
 }
 
 /**
- * PDF TextItem을 TextRegion으로 변환
+ * PDF TextItem을 TextRegion으로 변환 (줄 단위 병합 적용)
  */
 export function convertPDFTextItemsToRegions(
   textContent: PDFTextContent,
@@ -110,52 +111,31 @@ export function convertPDFTextItemsToRegions(
 ): PDFTextRegion[] {
   const items = textContent.items;
 
-  console.log('[PDF Extractor] Total items from PDF:', items.length);
+  console.log('[PDF Extractor] 📄 Total items from PDF:', items.length);
 
   const filtered = items.filter((item) => item.str.trim().length > 0);
-  console.log('[PDF Extractor] Items after filtering:', filtered.length);
+  console.log('[PDF Extractor] ✂️ Items after filtering:', filtered.length);
 
   if (filtered.length > 0) {
-    console.log('[PDF Extractor] Sample items:', filtered.slice(0, 3).map(i => ({
+    console.log('[PDF Extractor] 📝 Sample items:', filtered.slice(0, 3).map(i => ({
       text: i.str,
       transform: i.transform,
       fontName: i.fontName
     })));
   }
 
-  return filtered.map((item, index) => {
-      const { x, y, fontSize, rotation } = parseTransform(item.transform);
+  // 🔥 핵심: 줄 단위 병합 적용
+  console.log('[PDF Extractor] 🚀 Starting line merge...');
+  const mergedRegions = mergePDFTextItems(filtered, pageHeight);
 
-      // PDF 좌표계는 좌하단 원점이므로, 캔버스 좌표계(좌상단 원점)로 변환
-      const canvasY = pageHeight - y;
+  console.log('[PDF Extractor] ✨ Line merge complete:', {
+    before: filtered.length,
+    after: mergedRegions.length,
+    reduction: `${filtered.length - mergedRegions.length} items merged`,
+    compressionRatio: `${((1 - mergedRegions.length / filtered.length) * 100).toFixed(1)}%`
+  });
 
-      // 폰트 정보 추출 및 매핑
-      const fontInfo = mapPDFFont(item.fontName);
-      const fontFamilyString = buildFontFamilyString(fontInfo);
-      const { weight, style } = extractFontStyle(item.fontName);
-
-      return {
-        id: `pdf-text-${index}-${Date.now()}`,
-        text: item.str,
-        position: {
-          x,
-          y: canvasY - fontSize, // 텍스트 베이스라인 보정
-        },
-        size: {
-          width: item.width,
-          height: item.height || fontSize,
-        },
-        style: {
-          fontSize,
-          fontFamily: fontInfo.webFont,
-          fontFallbacks: fontInfo.fallbacks,
-          color: '#000000', // PDF에서 색상 추출은 복잡하므로 기본값 사용
-          rotation,
-          transform: item.transform,
-        },
-        fontInfo,
-      };
-    });
+  return mergedRegions;
 }
 
 /**

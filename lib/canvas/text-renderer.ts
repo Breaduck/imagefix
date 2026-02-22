@@ -9,10 +9,10 @@ import { TextRegion } from '@/types/canvas.types';
 import { LayerName, LayerIndex, setLayerInfo } from './layer-manager';
 
 /**
- * 텍스트 영역을 Fabric.js Text 객체로 변환
+ * 텍스트 영역을 Fabric.js IText 객체로 변환 (편집 가능)
  */
-export function createTextObject(region: TextRegion): fabric.Text {
-  const text = new fabric.Text(region.text, {
+export function createTextObject(region: TextRegion): fabric.IText {
+  const text = new fabric.IText(region.text, {
     left: region.position.x,
     top: region.position.y,
     fontSize: region.style.fontSize,
@@ -21,7 +21,11 @@ export function createTextObject(region: TextRegion): fabric.Text {
     angle: region.style.rotation,
     textAlign: region.style.align,
     lineHeight: region.style.lineHeight,
+    fontWeight: region.style.fontWeight || 'normal',
+    fontStyle: region.style.fontStyle || 'normal',
+    underline: region.style.underline || false,
     selectable: true,
+    editable: true, // 더블클릭으로 텍스트 편집 가능
     hasControls: true,
     hasBorders: true,
     lockRotation: false,
@@ -43,11 +47,11 @@ export function createBackgroundMask(
   region: TextRegion,
   backgroundColor: string = '#ffffff'
 ): fabric.Rect {
-  // 마스크 패딩을 충분히 크게 설정 (원본 텍스트를 완전히 덮기 위해)
-  // 폰트 크기에 비례한 패딩 사용
-  const basePadding = 5;
-  const fontSizePadding = region.style.fontSize * 0.3; // 폰트 크기의 30%
-  const padding = Math.max(basePadding, fontSizePadding);
+  // 마스크 패딩을 매우 크게 설정 (원본 텍스트를 완전히 덮기 위해)
+  // 폰트 크기의 150% + bbox 크기의 20%를 패딩으로 사용
+  const fontSizePadding = region.style.fontSize * 1.5; // 폰트 크기의 150%
+  const bboxPadding = Math.max(region.size.width, region.size.height) * 0.2; // bbox의 20%
+  const padding = Math.max(fontSizePadding, bboxPadding, 15); // 최소 15px
 
   const mask = new fabric.Rect({
     left: region.position.x - padding,
@@ -90,7 +94,7 @@ export function renderTextRegion(
   canvas: fabric.Canvas,
   region: TextRegion,
   backgroundColor: string = '#ffffff'
-): { mask: fabric.Rect; text: fabric.Text } {
+): { mask: fabric.Rect; text: fabric.IText } {
   // 배경 마스크 생성 및 추가
   const mask = createBackgroundMask(region, backgroundColor);
   canvas.add(mask);
@@ -113,7 +117,7 @@ export function renderTextRegions(
   canvas: fabric.Canvas,
   regions: TextRegion[],
   backgroundColor: string = '#ffffff'
-): Array<{ mask: fabric.Rect; text: fabric.Text }> {
+): Array<{ mask: fabric.Rect; text: fabric.IText }> {
   return regions.map((region) => renderTextRegion(canvas, region, backgroundColor));
 }
 
@@ -121,12 +125,15 @@ export function renderTextRegions(
  * 텍스트 스타일 업데이트
  */
 export function updateTextStyle(
-  text: fabric.Text,
+  text: fabric.IText,
   style: Partial<{
     fontSize: number;
     color: string;
     rotation: number;
     fontFamily: string;
+    fontWeight: 'normal' | 'bold';
+    fontStyle: 'normal' | 'italic';
+    underline: boolean;
   }>
 ): void {
   if (style.fontSize !== undefined) {
@@ -140,6 +147,15 @@ export function updateTextStyle(
   }
   if (style.fontFamily !== undefined) {
     text.set({ fontFamily: style.fontFamily });
+  }
+  if (style.fontWeight !== undefined) {
+    text.set({ fontWeight: style.fontWeight });
+  }
+  if (style.fontStyle !== undefined) {
+    text.set({ fontStyle: style.fontStyle });
+  }
+  if (style.underline !== undefined) {
+    text.set({ underline: style.underline });
   }
 
   text.canvas?.renderAll();

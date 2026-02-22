@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { fabric } from 'fabric';
 import { CanvasEditor } from '@/components/organisms/CanvasEditor';
 import { TextSidebar } from '@/components/organisms/TextSidebar';
@@ -12,6 +12,7 @@ import { TextStyleControls } from '@/components/molecules/TextStyleControls';
 import { ToolPanel } from '@/components/organisms/ToolPanel';
 import { TextRegion } from '@/types/canvas.types';
 import { useExport } from '@/hooks/useExport';
+import { CanvasHistory } from '@/lib/canvas/history-manager';
 
 export interface EditorLayoutProps {
   imageUrl: string;
@@ -31,8 +32,14 @@ export function EditorLayout({
   const [textRegions, setTextRegions] = useState<TextRegion[]>(initialTextRegions);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const historyRef = useRef<CanvasHistory | null>(null);
+
   const canvasRefCallback = useCallback((fabricCanvas: fabric.Canvas | null) => {
     setCanvas(fabricCanvas);
+  }, []);
+
+  const historyRefCallback = useCallback((history: CanvasHistory) => {
+    historyRef.current = history;
   }, []);
 
   const { exportAsPNG, exportAsJPEG, copyToClipboard, isClipboardAvailable } = useExport();
@@ -66,12 +73,17 @@ export function EditorLayout({
 
       // Fabric.js 객체 업데이트
       const objects = canvas.getObjects();
-      const textObject = objects.find((obj: any) => obj.regionId === selectedRegionId) as fabric.Text;
+      const textObject = objects.find((obj: any) => obj.regionId === selectedRegionId) as fabric.IText;
 
       if (textObject) {
         if (style.fontSize !== undefined) textObject.set({ fontSize: style.fontSize });
         if (style.color !== undefined) textObject.set({ fill: style.color });
         if (style.rotation !== undefined) textObject.set({ angle: style.rotation });
+        if (style.fontFamily !== undefined) textObject.set({ fontFamily: style.fontFamily });
+        if (style.fontWeight !== undefined) textObject.set({ fontWeight: style.fontWeight });
+        if (style.fontStyle !== undefined) textObject.set({ fontStyle: style.fontStyle });
+        if (style.underline !== undefined) textObject.set({ underline: style.underline });
+        if (style.align !== undefined) textObject.set({ textAlign: style.align });
 
         canvas.renderAll();
       }
@@ -135,6 +147,20 @@ export function EditorLayout({
     }
   }, [canvas, copyToClipboard, isClipboardAvailable]);
 
+  // Undo 핸들러
+  const handleUndo = useCallback(() => {
+    if (historyRef.current) {
+      historyRef.current.undo();
+    }
+  }, []);
+
+  // Redo 핸들러
+  const handleRedo = useCallback(() => {
+    if (historyRef.current) {
+      historyRef.current.redo();
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       {/* Tool Panel */}
@@ -142,6 +168,8 @@ export function EditorLayout({
         onReset={onReset}
         onExport={handleExport}
         onCopy={handleCopy}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         disabled={!canvas}
       />
 
@@ -167,6 +195,7 @@ export function EditorLayout({
             onTextSelect={handleTextSelect}
             onTextUpdate={handleTextUpdate}
             onCanvasReady={canvasRefCallback}
+            onHistoryReady={historyRefCallback}
           />
         </div>
 

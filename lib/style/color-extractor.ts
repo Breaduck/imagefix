@@ -59,7 +59,7 @@ function isBackgroundColor(rgb: RGB): boolean {
  */
 export function getPixelsInBBox(imageElement: HTMLImageElement, bbox: BoundingBox): RGB[] {
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   if (!ctx) {
     throw new Error('Canvas context not available');
@@ -153,7 +153,7 @@ export function extractBackgroundColor(
 ): string {
   try {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     if (!ctx) {
       return '#ffffff';

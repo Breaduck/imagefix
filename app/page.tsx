@@ -15,10 +15,11 @@ type FileType = 'image' | 'pdf';
 export default function Home() {
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
   const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction();
-  const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
+  const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, totalPages, currentPage, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
 
   const [stage, setStage] = useState<'upload' | 'processing' | 'editing'>('upload');
   const [fileType, setFileType] = useState<FileType>('image');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const handleFileSelect = async (file: File) => {
     console.log('[HomePage] File selected:', file.name, file.type, file.size);
@@ -30,6 +31,9 @@ export default function Home() {
       console.log('[HomePage] File type:', isPDF ? 'PDF' : 'Image');
 
       if (isPDF) {
+        // PDF 파일 저장
+        setPdfFile(file);
+
         // PDF 처리 - 첫 페이지 자동 처리
         console.log('[HomePage] Starting PDF processing');
         setStage('processing');
@@ -105,7 +109,23 @@ export default function Home() {
     clearImage();
     clearOCRResults();
     clearPDFResults();
+    setPdfFile(null);
     setStage('upload');
+  };
+
+  const handlePageChange = async (newPage: number) => {
+    if (!pdfFile || newPage < 1 || newPage > totalPages) return;
+
+    try {
+      setStage('processing');
+      await extractFromPDF(pdfFile, newPage);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+    } catch (err) {
+      console.error('[HomePage] Error changing page:', err);
+      alert('페이지 변경 중 오류가 발생했습니다.');
+      setStage('editing');
+    }
   };
 
   return (
@@ -256,8 +276,11 @@ export default function Home() {
         <>
           {fileType === 'pdf' && pageData ? (
             <PDFEditorLayout
-              key={pageData.imageUrl}
+              key={`pdf-page-${pageData.pageNumber}`}
               pageData={pageData}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
               onReset={handleReset}
             />
           ) : fileType === 'image' && imageData ? (
