@@ -35,6 +35,9 @@ export default function Home() {
         setStage('processing');
         const result = await extractFromPDF(file, 1); // 첫 페이지만 처리
         console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
+
+        // DOM 정리를 위한 짧은 딜레이
+        await new Promise(resolve => setTimeout(resolve, 100));
         setStage('editing');
       } else {
         // 이미지 처리 (기존 OCR)
@@ -46,6 +49,9 @@ export default function Home() {
         console.log('[HomePage] Starting OCR processing');
         const regions = await extractText(data.dataUrl, data.width, data.height);
         console.log('[HomePage] OCR complete, text regions:', regions.length);
+
+        // DOM 정리를 위한 짧은 딜레이
+        await new Promise(resolve => setTimeout(resolve, 100));
         setStage('editing');
       }
     } catch (err) {
@@ -63,7 +69,7 @@ export default function Home() {
   };
 
   return (
-    <main className="h-screen overflow-hidden">
+    <main className="h-screen overflow-hidden" key={stage}>
       {/* Upload Stage */}
       {stage === 'upload' && (
         <div className="min-h-screen p-8">
