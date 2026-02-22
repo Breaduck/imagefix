@@ -179,3 +179,39 @@ Tesseract accuracy depends on image quality. Preprocessing (contrast adjustment,
 - **lib/** - Pure utility functions, no React dependencies
 - **hooks/** - React hooks for state/effects, may use lib utilities
 - **types/** - Shared TypeScript interfaces across layers
+
+## Recent Changes
+
+### 2026-02-22: Font Loading & Background Mask Improvements (Commit: 59f857e)
+
+**Problem**:
+- Pretendard font required manual download, not loading automatically
+- Background masks too small (2px padding), original text still visible behind editable text
+- User reported overlapping text: original text showing through with new text on top
+
+**Solution**:
+1. **Automatic Font Loading** (`app/layout.tsx`)
+   - Added Pretendard font via jsDelivr CDN link in `<head>`
+   - No manual download required anymore
+   - Font loads with full weight support (400, 500, 600, 700)
+   - Added comprehensive Korean fallback chain: `Pretendard → Malgun Gothic → Apple SD Gothic Neo → Noto Sans KR → system fonts`
+
+2. **Increased Background Mask Coverage** (`lib/canvas/text-renderer.ts`)
+   - Increased padding from 2px → 10px (5x larger)
+   - Masks now extend further beyond text bounding boxes to fully cover original text
+   - Added debug logging: `console.log('[TextRenderer] Creating mask: ...')`
+   - Set explicit `opacity: 1.0` for complete coverage
+
+**Files Changed**:
+- `app/layout.tsx` - Added CDN font link, updated body font-family
+- `lib/canvas/text-renderer.ts` - Increased mask padding, added logging
+
+**Testing Needed**:
+- Verify Pretendard font loads correctly in browser DevTools
+- Check if original text is now completely hidden by background masks
+- Test font weight rendering (bold/regular variants)
+
+**Known Limitations**:
+- OCR accuracy still depends on Tesseract.js quality (no preprocessing implemented)
+- Font weight detection from PDF not yet implemented
+- If 10px padding is insufficient, may need further increase or dynamic calculation based on text size
