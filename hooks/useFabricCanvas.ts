@@ -42,16 +42,20 @@ export function useFabricCanvas(
       setCanvas(fabricCanvas);
       setIsReady(true);
       console.log('[useFabricCanvas] Canvas initialized successfully');
-
-      // 정리 함수
-      return () => {
-        console.log('[useFabricCanvas] Disposing canvas');
-        fabricCanvas.dispose();
-      };
     } catch (error) {
       console.error('[useFabricCanvas] Failed to initialize canvas:', error);
     }
   }, [width, height, canvas]);
+
+  // 컴포넌트 언마운트 시에만 정리
+  useEffect(() => {
+    return () => {
+      if (canvas) {
+        console.log('[useFabricCanvas] Component unmounting, disposing canvas');
+        canvas.dispose();
+      }
+    };
+  }, [canvas]);
 
   return {
     canvas,
