@@ -60,6 +60,11 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
           `[usePDFExtraction] Extracted ${data.textRegions.length} text regions from page ${pageNumber}`
         );
 
+        if (data.textRegions.length === 0) {
+          console.warn('[usePDFExtraction] No text regions found! PDF may be image-based.');
+          console.warn('[usePDFExtraction] Consider using OCR instead by converting PDF to image.');
+        }
+
         setPageData(data);
         return data;
       } catch (err) {

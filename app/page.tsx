@@ -36,6 +36,46 @@ export default function Home() {
         const result = await extractFromPDF(file, 1);
         console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
 
+        // 텍스트가 없으면 OCR 제안
+        if (result.textRegions.length === 0) {
+          const useOCR = confirm(
+            'PDF에서 텍스트 레이어를 찾을 수 없습니다.\n' +
+            '이미지 기반 PDF이거나 스캔된 문서일 수 있습니다.\n\n' +
+            'OCR을 사용하여 텍스트를 추출하시겠습니까?\n' +
+            '(시간이 조금 걸릴 수 있습니다)'
+          );
+
+          if (useOCR) {
+            console.log('[HomePage] Converting PDF to image for OCR');
+
+            // PDF 페이지를 이미지로 변환하고 uploadImage 사용
+            const imageUrl = result.canvas.toDataURL('image/png');
+
+            // Blob으로 변환
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            const imageFile = new File([blob], 'pdf-page.png', { type: 'image/png' });
+
+            // 이미지로 업로드 (OCR 경로)
+            const data = await uploadImage(imageFile);
+            console.log('[HomePage] PDF converted to image:', data.width, 'x', data.height);
+
+            // 파일 타입을 이미지로 변경
+            setFileType('image');
+
+            console.log('[HomePage] Starting OCR on PDF page');
+            const regions = await extractText(data.dataUrl, data.width, data.height);
+            console.log('[HomePage] OCR complete, text regions:', regions.length);
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            setStage('editing');
+            return;
+          } else {
+            setStage('upload');
+            return;
+          }
+        }
+
         // DOM 정리를 위한 짧은 딜레이
         await new Promise(resolve => setTimeout(resolve, 100));
         setStage('editing');

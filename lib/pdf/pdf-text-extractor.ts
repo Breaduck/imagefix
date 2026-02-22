@@ -110,9 +110,20 @@ export function convertPDFTextItemsToRegions(
 ): PDFTextRegion[] {
   const items = textContent.items;
 
-  return items
-    .filter((item) => item.str.trim().length > 0)
-    .map((item, index) => {
+  console.log('[PDF Extractor] Total items from PDF:', items.length);
+
+  const filtered = items.filter((item) => item.str.trim().length > 0);
+  console.log('[PDF Extractor] Items after filtering:', filtered.length);
+
+  if (filtered.length > 0) {
+    console.log('[PDF Extractor] Sample items:', filtered.slice(0, 3).map(i => ({
+      text: i.str,
+      transform: i.transform,
+      fontName: i.fontName
+    })));
+  }
+
+  return filtered.map((item, index) => {
       const { x, y, fontSize, rotation } = parseTransform(item.transform);
 
       // PDF 좌표계는 좌하단 원점이므로, 캔버스 좌표계(좌상단 원점)로 변환
