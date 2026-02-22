@@ -116,12 +116,22 @@ export function CanvasEditor({
       existingMasks.forEach((obj) => canvas.remove(obj));
 
       // 각 텍스트 영역에 대해 배경색 추출 및 렌더링
-      textRegions.forEach((region) => {
+      textRegions.forEach((region, index) => {
         const backgroundColor = extractBackgroundColor(backgroundImg, {
           x0: region.position.x,
           y0: region.position.y,
           x1: region.position.x + region.size.width,
           y1: region.position.y + region.size.height,
+        });
+
+        console.log(`[CanvasEditor] Region ${index}:`, {
+          text: region.text,
+          position: region.position,
+          size: region.size,
+          fontSize: region.style.fontSize,
+          fontFamily: region.style.fontFamily,
+          color: region.style.color,
+          backgroundColor,
         });
 
         renderTextRegions(canvas, [region], backgroundColor);
