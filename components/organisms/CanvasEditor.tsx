@@ -52,30 +52,44 @@ export function CanvasEditor({
     console.log('[CanvasEditor] Loading background image');
     setIsLoading(true);
 
+    let isMounted = true;
+
     // 이미지 엘리먼트 로드
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
 
     img.onload = () => {
+      if (!isMounted) {
+        console.log('[CanvasEditor] Component unmounted, skipping image load');
+        return;
+      }
+
       console.log('[CanvasEditor] Image loaded, adding to canvas');
       setBackgroundImg(img);
 
       // 캔버스에 배경 이미지 추가
       addBackgroundImage(canvas, imageUrl)
         .then(() => {
+          if (!isMounted) return;
           console.log('[CanvasEditor] Background image added successfully');
           setIsLoading(false);
         })
         .catch((error) => {
+          if (!isMounted) return;
           console.error('[CanvasEditor] Failed to add background image:', error);
           setIsLoading(false);
         });
     };
 
     img.onerror = (error) => {
+      if (!isMounted) return;
       console.error('[CanvasEditor] Failed to load background image:', error);
       setIsLoading(false);
+    };
+
+    return () => {
+      isMounted = false;
     };
   }, [canvas, imageUrl]);
 
@@ -178,7 +192,13 @@ export function CanvasEditor({
           <p className="text-gray-500">이미지 로딩 중...</p>
         </div>
       )}
-      <canvas ref={canvasRef} className="border border-gray-300 rounded-lg shadow-sm" />
+      <div suppressHydrationWarning>
+        <canvas
+          ref={canvasRef}
+          className="border border-gray-300 rounded-lg shadow-sm"
+          suppressHydrationWarning
+        />
+      </div>
     </div>
   );
 }

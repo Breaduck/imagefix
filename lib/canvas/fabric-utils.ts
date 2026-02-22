@@ -33,11 +33,23 @@ export async function addBackgroundImage(
   imageUrl: string
 ): Promise<fabric.Image> {
   return new Promise((resolve, reject) => {
+    // Canvas가 이미 dispose되었는지 확인
+    if (!canvas || !canvas.getElement()) {
+      reject(new Error('Canvas is not available or has been disposed'));
+      return;
+    }
+
     fabric.Image.fromURL(
       imageUrl,
       (img) => {
         if (!img) {
           reject(new Error('Failed to load image'));
+          return;
+        }
+
+        // Canvas가 여전히 유효한지 다시 확인
+        if (!canvas || !canvas.getElement()) {
+          reject(new Error('Canvas was disposed before image could be added'));
           return;
         }
 
