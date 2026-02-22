@@ -28,7 +28,7 @@ export function useFabricCanvas(
       return;
     }
 
-    // 이미 초기화된 경우 스킷
+    // 이미 초기화된 경우 스킵
     if (canvas) {
       console.log('[useFabricCanvas] Canvas already initialized, skipping');
       return;
@@ -51,7 +51,7 @@ export function useFabricCanvas(
     } catch (error) {
       console.error('[useFabricCanvas] Failed to initialize canvas:', error);
     }
-  }, [canvasRef.current, width, height]);
+  }, [width, height, canvas]);
 
   return {
     canvas,

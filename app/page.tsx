@@ -209,9 +209,14 @@ export default function Home() {
       {stage === 'editing' && (
         <>
           {fileType === 'pdf' && pageData ? (
-            <PDFEditorLayout pageData={pageData} onReset={handleReset} />
+            <PDFEditorLayout
+              key={pageData.imageUrl}
+              pageData={pageData}
+              onReset={handleReset}
+            />
           ) : fileType === 'image' && imageData ? (
             <EditorLayout
+              key={imageData.dataUrl}
               imageUrl={imageData.dataUrl}
               imageWidth={imageData.width}
               imageHeight={imageData.height}
