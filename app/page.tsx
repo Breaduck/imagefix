@@ -17,8 +17,11 @@ export default function Home() {
   const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction();
   const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
 
-  const [stage, setStage] = useState<'upload' | 'processing' | 'editing'>('upload');
+  const [stage, setStage] = useState<'upload' | 'processing' | 'editing' | 'pageSelect'>('upload');
   const [fileType, setFileType] = useState<FileType>('image');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [selectedPage, setSelectedPage] = useState<number>(1);
 
   const handleFileSelect = async (file: File) => {
     console.log('[HomePage] File selected:', file.name, file.type, file.size);
@@ -30,15 +33,28 @@ export default function Home() {
       console.log('[HomePage] File type:', isPDF ? 'PDF' : 'Image');
 
       if (isPDF) {
-        // PDF 처리
-        console.log('[HomePage] Starting PDF processing');
-        setStage('processing');
-        const result = await extractFromPDF(file, 1); // 첫 페이지만 처리
-        console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
+        // PDF 처리 - 먼저 페이지 수 확인
+        console.log('[HomePage] Loading PDF to check page count');
+        const { loadPDF } = await import('@/lib/pdf/pdf-text-extractor');
+        const pdf = await loadPDF(file);
+        const numPages = pdf.numPages;
+        console.log('[HomePage] PDF has', numPages, 'pages');
 
-        // DOM 정리를 위한 짧은 딜레이
-        await new Promise(resolve => setTimeout(resolve, 100));
-        setStage('editing');
+        setPdfFile(file);
+        setTotalPages(numPages);
+
+        if (numPages > 1) {
+          // 여러 페이지면 페이지 선택 UI 표시
+          setStage('pageSelect');
+        } else {
+          // 1페이지면 바로 처리
+          setStage('processing');
+          const result = await extractFromPDF(file, 1);
+          console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+          setStage('editing');
+        }
       } else {
         // 이미지 처리 (기존 OCR)
         console.log('[HomePage] Starting image upload');
@@ -61,10 +77,31 @@ export default function Home() {
     }
   };
 
+  const handlePageSelect = async (pageNum: number) => {
+    if (!pdfFile) return;
+
+    try {
+      setStage('processing');
+      console.log('[HomePage] Processing PDF page', pageNum);
+      const result = await extractFromPDF(pdfFile, pageNum);
+      console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+    } catch (err) {
+      console.error('[HomePage] Error processing PDF page:', err);
+      alert('PDF 페이지 처리 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
+      setStage('pageSelect');
+    }
+  };
+
   const handleReset = () => {
     clearImage();
     clearOCRResults();
     clearPDFResults();
+    setPdfFile(null);
+    setTotalPages(0);
+    setSelectedPage(1);
     setStage('upload');
   };
 
@@ -174,6 +211,51 @@ export default function Home() {
                   PNG, JPG 다운로드 또는 클립보드 복사
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Page Selection Stage */}
+      {stage === 'pageSelect' && (
+        <div className="min-h-screen flex items-center justify-center p-8">
+          <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold mb-4">페이지 선택</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              PDF에 {totalPages}개의 페이지가 있습니다. 편집할 페이지를 선택하세요.
+            </p>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">
+                페이지 번호: {selectedPage} / {totalPages}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max={totalPages}
+                value={selectedPage}
+                onChange={(e) => setSelectedPage(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>1</span>
+                <span>{totalPages}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => handlePageSelect(selectedPage)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition"
+              >
+                선택한 페이지 편집
+              </button>
+              <button
+                onClick={handleReset}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-700 font-medium py-2 px-4 rounded-lg transition"
+              >
+                취소
+              </button>
             </div>
           </div>
         </div>
