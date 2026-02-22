@@ -1,21 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-// TODO: Pretendard 폰트 설정
-// 아직 폰트 파일이 다운로드되지 않았으므로, 시스템 폰트를 임시로 사용합니다.
-// 폰트 파일을 public/fonts/에 다운로드한 후 아래 코드의 주석을 해제하세요.
-//
-// import localFont from "next/font/local";
-// const pretendard = localFont({
-//   src: [
-//     { path: "../public/fonts/Pretendard-Regular.woff2", weight: "400", style: "normal" },
-//     { path: "../public/fonts/Pretendard-Medium.woff2", weight: "500", style: "normal" },
-//     { path: "../public/fonts/Pretendard-SemiBold.woff2", weight: "600", style: "normal" },
-//     { path: "../public/fonts/Pretendard-Bold.woff2", weight: "700", style: "normal" },
-//   ],
-//   variable: "--font-pretendard",
-//   fallback: ["system-ui", "sans-serif"],
-// });
+// Pretendard 폰트를 CDN에서 자동으로 로드합니다.
 
 export const metadata: Metadata = {
   title: "NotebookLM Text Editor",
@@ -29,7 +15,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body className="antialiased font-sans" suppressHydrationWarning>
+      <head>
+        <link
+          rel="stylesheet"
+          as="style"
+          crossOrigin="anonymous"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css"
+        />
+      </head>
+      <body className="antialiased" style={{ fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif' }} suppressHydrationWarning>
         {children}
       </body>
     </html>

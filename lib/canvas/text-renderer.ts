@@ -43,7 +43,7 @@ export function createBackgroundMask(
   region: TextRegion,
   backgroundColor: string = '#ffffff'
 ): fabric.Rect {
-  const padding = 2; // 마스크 패딩
+  const padding = 10; // 마스크 패딩 증가 (원본 텍스트를 완전히 덮기 위해)
 
   const mask = new fabric.Rect({
     left: region.position.x - padding,
@@ -55,6 +55,13 @@ export function createBackgroundMask(
     evented: false,
     hasControls: false,
     hasBorders: false,
+    opacity: 1.0, // 완전 불투명
+  });
+
+  console.log('[TextRenderer] Creating mask:', {
+    position: { x: mask.left, y: mask.top },
+    size: { width: mask.width, height: mask.height },
+    fill: backgroundColor,
   });
 
   // 레이어 정보 설정
