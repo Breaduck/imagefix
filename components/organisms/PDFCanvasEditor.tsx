@@ -28,18 +28,25 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate }: PDFCan
     if (!canvas || !pageData) return;
 
     setIsLoading(true);
+    let isMounted = true;
 
     // 1. 배경 이미지 추가
     addPDFPageAsBackground(canvas, pageData.canvas)
       .then(() => {
+        if (!isMounted) return;
         // 2. 텍스트 영역 렌더링
         renderPDFTextRegions(canvas, pageData.textRegions);
         setIsLoading(false);
       })
       .catch((error) => {
+        if (!isMounted) return;
         console.error('Failed to render PDF page:', error);
         setIsLoading(false);
       });
+
+    return () => {
+      isMounted = false;
+    };
   }, [canvas, pageData]);
 
   // 텍스트 선택 이벤트
@@ -100,7 +107,13 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate }: PDFCan
           <p className="text-gray-500">PDF 렌더링 중...</p>
         </div>
       )}
-      <canvas ref={canvasRef} className="border border-gray-300 rounded-lg shadow-sm" />
+      <div suppressHydrationWarning>
+        <canvas
+          ref={canvasRef}
+          className="border border-gray-300 rounded-lg shadow-sm"
+          suppressHydrationWarning
+        />
+      </div>
     </div>
   );
 }

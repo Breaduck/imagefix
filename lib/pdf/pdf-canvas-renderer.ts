@@ -65,6 +65,12 @@ export function addPDFPageAsBackground(
   pdfCanvas: HTMLCanvasElement
 ): Promise<fabric.Image> {
   return new Promise((resolve, reject) => {
+    // Canvas가 이미 dispose되었는지 확인
+    if (!canvas || !canvas.getElement()) {
+      reject(new Error('Canvas is not available or has been disposed'));
+      return;
+    }
+
     const dataUrl = pdfCanvas.toDataURL();
 
     fabric.Image.fromURL(
@@ -72,6 +78,12 @@ export function addPDFPageAsBackground(
       (img) => {
         if (!img) {
           reject(new Error('Failed to load PDF page image'));
+          return;
+        }
+
+        // Canvas가 여전히 유효한지 다시 확인
+        if (!canvas || !canvas.getElement()) {
+          reject(new Error('Canvas was disposed before PDF page could be added'));
           return;
         }
 
