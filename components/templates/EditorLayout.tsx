@@ -35,6 +35,7 @@ export function EditorLayout({
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
   const historyRef = useRef<CanvasHistory | null>(null);
+  const [isRegionOCRMode, setIsRegionOCRMode] = useState(false);
 
   const canvasRefCallback = useCallback((fabricCanvas: fabric.Canvas | null) => {
     setCanvas(fabricCanvas);
@@ -163,6 +164,14 @@ export function EditorLayout({
     }
   }, []);
 
+  const handleRegionOCR = useCallback(() => {
+    setIsRegionOCRMode((prev) => !prev);
+    console.log('[RegionOCR] Mode toggled:', !isRegionOCRMode);
+    if (!isRegionOCRMode) {
+      alert('영역 선택 모드 활성화\n\n캔버스에서 드래그하여 OCR할 영역을 선택하세요.\n(다음 업데이트에서 구현 예정)');
+    }
+  }, [isRegionOCRMode]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       {/* Tool Panel */}
@@ -173,6 +182,8 @@ export function EditorLayout({
         onUndo={handleUndo}
         onRedo={handleRedo}
         onRerunOCR={onRerunOCR}
+        onRegionOCR={handleRegionOCR}
+        isOCRMode={isRegionOCRMode}
         disabled={!canvas}
       />
 
