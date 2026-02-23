@@ -59,8 +59,8 @@ export function useOCR(): UseOCRReturn {
         // OCR 결과를 TextRegion으로 변환
         let regions = convertOCRResultsToTextRegions(ocrResults, imageWidth, imageHeight);
 
-        // 신뢰도 낮은 결과 필터링 (60% 이상)
-        regions = filterByConfidence(regions, 60);
+        // 신뢰도 낮은 결과 필터링 (50% 이상으로 완화하여 영어 인식률 향상)
+        regions = filterByConfidence(regions, 50);
 
         // 정렬 (위에서 아래, 왼쪽에서 오른쪽)
         regions = sortTextRegions(regions);

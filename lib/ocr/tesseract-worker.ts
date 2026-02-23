@@ -18,7 +18,11 @@ export async function initializeWorker(
     return worker;
   }
 
+  console.log(`[Tesseract] Initializing worker with languages: ${OCR_OPTIONS.lang}`);
+  console.log(`[Tesseract] Language data path: ${TESSERACT_CONFIG.langPath}`);
+
   worker = await createWorker(OCR_OPTIONS.lang, undefined, {
+    langPath: TESSERACT_CONFIG.langPath,
     logger: (m: any) => {
       console.log(`[Tesseract] ${m.status}: ${m.progress}`);
       if (onProgress && m.progress) {
@@ -30,6 +34,8 @@ export async function initializeWorker(
   await worker.setParameters({
     tessedit_pageseg_mode: PSM.AUTO,
   });
+
+  console.log(`[Tesseract] Worker initialized successfully`);
 
   return worker;
 }
