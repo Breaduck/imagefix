@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "NotebookLM to ImageFix",
+  "version": "1.0.0",
+  "description": "Export NotebookLM slides as clean background + editable text layers",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://notebooklm.google.com/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://notebooklm.google.com/*"],
+      "js": ["content_script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

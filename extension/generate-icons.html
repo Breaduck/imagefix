@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Extension Icons</title>
+</head>
+<body>
+  <h1>Icon Generator</h1>
+  <p>Click buttons to download placeholder icons for development:</p>
+
+  <button onclick="generateIcon(16)">Download icon16.png</button>
+  <button onclick="generateIcon(48)">Download icon48.png</button>
+  <button onclick="generateIcon(128)">Download icon128.png</button>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <script>
+    function generateIcon(size) {
+      const canvas = document.getElementById('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Blue background
+      ctx.fillStyle = '#1a73e8';
+      ctx.fillRect(0, 0, size, size);
+
+      // White text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${size * 0.5}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('NL', size / 2, size / 2);
+
+      // Download
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `icon${size}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+  </script>
+</body>
+</html>
