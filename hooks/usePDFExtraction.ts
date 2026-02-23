@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { loadPDF, extractPDFPageData } from '@/lib/pdf/pdf-text-extractor';
+import { loadPDF, extractPDFPageData, isTextLayerUsable } from '@/lib/pdf/pdf-text-extractor';
 import { PDFPageData } from '@/types/pdf.types';
 
 export interface UsePDFExtractionReturn {
@@ -64,13 +64,18 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
 
         setProgress(100);
 
+        // 텍스트 레이어 품질 검증
+        const quality = isTextLayerUsable(data.textContent.items);
+        console.log(`[usePDFExtraction] 📊 Text layer quality check:`, quality);
+        console.log(`[PDF] page=${pageNumber} items=${quality.stats.totalItems} nonEmpty=${quality.stats.nonEmptyItems} sample=...`);
+
         console.log(`[usePDFExtraction] ✅ Page ${pageNumber} extracted successfully`);
         console.log(`[usePDFExtraction] 📝 Text regions found: ${data.textRegions.length}`);
         console.log(`[usePDFExtraction] 📐 Canvas size: ${data.viewport.width}x${data.viewport.height}`);
 
-        if (data.textRegions.length === 0) {
-          console.warn('[usePDFExtraction] ⚠️ No text regions found! PDF may be image-based.');
-          console.warn('[usePDFExtraction] Consider using OCR instead by converting PDF to image.');
+        if (!quality.usable) {
+          console.warn(`[usePDFExtraction] ⚠️ Text layer not usable: ${quality.reason}`);
+          console.warn('[usePDFExtraction] Consider using OCR instead.');
         }
 
         setPageData(data);

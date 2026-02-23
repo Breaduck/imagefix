@@ -9,6 +9,7 @@ import { useImageUpload } from '@/hooks/useImageUpload';
 import { useTextExtraction } from '@/hooks/useTextExtraction';
 import { usePDFExtraction } from '@/hooks/usePDFExtraction';
 import { PDFPageData } from '@/types/pdf.types';
+import { isTextLayerUsable } from '@/lib/pdf/pdf-text-extractor';
 
 type FileType = 'image' | 'pdf';
 
@@ -46,11 +47,19 @@ export default function Home() {
           viewportSize: `${result.viewport.width}x${result.viewport.height}`
         });
 
-        // 텍스트가 없으면 OCR 제안
-        if (result.textRegions.length === 0) {
+        // 텍스트 레이어 품질 확인
+        const quality = isTextLayerUsable(result.textContent.items);
+        console.log('[HomePage] Text layer quality:', quality);
+
+        // 텍스트가 없거나 품질이 낮으면 OCR 제안
+        if (!quality.usable || result.textRegions.length === 0) {
+          const reason = !quality.usable
+            ? quality.reason
+            : 'No text regions after processing';
+
           const useOCR = confirm(
-            'PDF에서 텍스트 레이어를 찾을 수 없습니다.\n' +
-            '이미지 기반 PDF이거나 스캔된 문서일 수 있습니다.\n\n' +
+            `PDF 텍스트 레이어를 사용할 수 없습니다.\n` +
+            `사유: ${reason}\n\n` +
             'OCR을 사용하여 텍스트를 추출하시겠습니까?\n' +
             '(시간이 조금 걸릴 수 있습니다)'
           );

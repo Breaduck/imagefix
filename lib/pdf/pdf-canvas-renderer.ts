@@ -8,6 +8,7 @@ import { fabric } from 'fabric';
 import { PDFTextRegion } from '@/types/pdf.types';
 import { buildFontFamilyString } from './font-mapper';
 import { LayerName, LayerIndex, setLayerInfo } from '@/lib/canvas/layer-manager';
+import { bakeTextMasksToBackground, setBackgroundFromCanvas } from '@/lib/canvas/background-baker';
 
 /**
  * PDF TextRegion을 Fabric.js IText 객체로 변환 (편집 가능)
@@ -59,53 +60,32 @@ export function renderPDFTextRegions(
 }
 
 /**
- * PDF 페이지 캔버스를 배경 이미지로 추가
+ * PDF 페이지 캔버스를 배경 이미지로 추가 (텍스트 제거 포함)
  */
-export function addPDFPageAsBackground(
+export async function addPDFPageAsBackground(
   canvas: fabric.Canvas,
-  pdfCanvas: HTMLCanvasElement
-): Promise<fabric.Image> {
-  return new Promise((resolve, reject) => {
-    // Canvas가 이미 dispose되었는지 확인
-    if (!canvas || !canvas.getElement()) {
-      reject(new Error('Canvas is not available or has been disposed'));
-      return;
-    }
+  pdfCanvas: HTMLCanvasElement,
+  textRegions?: PDFTextRegion[]
+): Promise<void> {
+  // Canvas 유효성 확인
+  if (!canvas || !canvas.getElement()) {
+    throw new Error('Canvas is not available or has been disposed');
+  }
 
-    const dataUrl = pdfCanvas.toDataURL();
+  console.log('[PDF Renderer] Adding PDF background, text regions:', textRegions?.length || 0);
 
-    fabric.Image.fromURL(
-      dataUrl,
-      (img) => {
-        if (!img) {
-          reject(new Error('Failed to load PDF page image'));
-          return;
-        }
+  let finalCanvas = pdfCanvas;
 
-        // Canvas가 여전히 유효한지 다시 확인
-        if (!canvas || !canvas.getElement()) {
-          reject(new Error('Canvas was disposed before PDF page could be added'));
-          return;
-        }
+  // 텍스트 영역이 있으면 background baking 적용
+  if (textRegions && textRegions.length > 0) {
+    console.log('[PDF Renderer] 🔥 Baking text masks to remove original text');
+    finalCanvas = await bakeTextMasksToBackground(pdfCanvas, textRegions, {
+      method: 'smart'
+    });
+    console.log('[PDF Renderer] ✅ Background baked');
+  }
 
-        img.set({
-          left: 0,
-          top: 0,
-          selectable: false,
-          evented: false,
-          hasControls: false,
-          hasBorders: false,
-        });
-
-        setLayerInfo(img, LayerName.BACKGROUND_IMAGE, LayerIndex.BACKGROUND_IMAGE);
-
-        canvas.add(img);
-        canvas.sendToBack(img);
-        canvas.renderAll();
-
-        resolve(img);
-      },
-      { crossOrigin: 'anonymous' }
-    );
-  });
+  // canvas.backgroundImage로 설정 (canvas.add 사용 안 함!)
+  await setBackgroundFromCanvas(canvas, finalCanvas);
+  console.log('[PDF Renderer] Background set as canvas.backgroundImage');
 }

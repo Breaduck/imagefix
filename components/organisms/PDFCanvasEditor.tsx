@@ -66,8 +66,8 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate, onHistor
     console.log(`[PDFCanvasEditor] Clearing canvas (current objects: ${canvas.getObjects().length})`);
     canvas.clear();
 
-    // 1. 배경 이미지 추가
-    addPDFPageAsBackground(canvas, pageData.canvas)
+    // 1. 배경 이미지 추가 (텍스트 제거 베이킹 포함)
+    addPDFPageAsBackground(canvas, pageData.canvas, pageData.textRegions)
       .then(() => {
         if (!isMounted) return;
         console.log(`[PDFCanvasEditor] Background added for page ${pageData.pageNumber}`);
@@ -76,6 +76,11 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate, onHistor
         console.log(`[PDFCanvasEditor] Rendering ${pageData.textRegions.length} text regions`);
         renderPDFTextRegions(canvas, pageData.textRegions);
 
+        // 캔버스 검증
+        const objects = canvas.getObjects();
+        const types = objects.map((o: any) => o.type);
+        const bgInfo = canvas.backgroundImage ? 'set' : 'none';
+        console.log(`[Canvas] objects=${types.join(',')} bg=${bgInfo}`);
         console.log(`[PDFCanvasEditor] ✅ Page ${pageData.pageNumber} rendered (total objects: ${canvas.getObjects().length})`);
         setIsLoading(false);
 

@@ -103,6 +103,52 @@ function parseTransform(transform: number[]): {
 }
 
 /**
+ * PDF 텍스트 레이어 품질 검증
+ */
+export function isTextLayerUsable(items: PDFTextItem[]): {
+  usable: boolean;
+  reason?: string;
+  stats: {
+    totalItems: number;
+    nonEmptyItems: number;
+    totalChars: number;
+    whitespaceRatio: number;
+  };
+} {
+  const nonEmpty = items.filter((item) => item.str.trim().length > 0);
+  const totalChars = nonEmpty.reduce((sum, item) => sum + item.str.length, 0);
+  const nonWhitespaceChars = nonEmpty.reduce(
+    (sum, item) => sum + item.str.replace(/\s/g, '').length,
+    0
+  );
+  const whitespaceRatio = totalChars > 0 ? 1 - nonWhitespaceChars / totalChars : 1;
+
+  const stats = {
+    totalItems: items.length,
+    nonEmptyItems: nonEmpty.length,
+    totalChars,
+    whitespaceRatio,
+  };
+
+  // 조건 1: 텍스트 아이템이 없음
+  if (nonEmpty.length === 0) {
+    return { usable: false, reason: 'No text items found', stats };
+  }
+
+  // 조건 2: 80% 이상이 공백
+  if (whitespaceRatio > 0.8) {
+    return { usable: false, reason: 'Text is mostly whitespace (>80%)', stats };
+  }
+
+  // 조건 3: 총 문자 수가 너무 적음 (페이지당 10자 미만)
+  if (totalChars < 10) {
+    return { usable: false, reason: 'Too few characters (<10)', stats };
+  }
+
+  return { usable: true, stats };
+}
+
+/**
  * PDF TextItem을 TextRegion으로 변환 (줄 단위 병합 적용)
  */
 export function convertPDFTextItemsToRegions(
