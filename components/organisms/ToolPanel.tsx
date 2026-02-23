@@ -18,6 +18,10 @@ export interface ToolPanelProps {
   currentPage?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
+  // OCR 재실행 (선택적)
+  onRerunOCR?: () => void;
+  onRegionOCR?: () => void;
+  isOCRMode?: boolean;
 }
 
 export function ToolPanel({
@@ -29,7 +33,10 @@ export function ToolPanel({
   disabled = false,
   currentPage,
   totalPages,
-  onPageChange
+  onPageChange,
+  onRerunOCR,
+  onRegionOCR,
+  isOCRMode = false
 }: ToolPanelProps) {
   return (
     <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -62,6 +69,33 @@ export function ToolPanel({
 
         {/* 구분선 */}
         {(onUndo || onRedo) && <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />}
+
+        {/* OCR 버튼 */}
+        {onRerunOCR && (
+          <Button onClick={onRerunOCR} variant="outline" size="sm" disabled={disabled} title="전체 페이지 OCR 재실행">
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            OCR 다시하기
+          </Button>
+        )}
+
+        {onRegionOCR && (
+          <Button
+            onClick={onRegionOCR}
+            variant={isOCRMode ? 'primary' : 'outline'}
+            size="sm"
+            disabled={disabled}
+            title="영역 선택 후 OCR"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            영역 OCR
+          </Button>
+        )}
+
+        {(onRerunOCR || onRegionOCR) && <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />}
 
         <Button onClick={onReset} variant="outline" size="sm" disabled={disabled}>
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

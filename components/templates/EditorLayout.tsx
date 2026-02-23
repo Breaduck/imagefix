@@ -20,6 +20,7 @@ export interface EditorLayoutProps {
   imageHeight: number;
   textRegions: TextRegion[];
   onReset: () => void;
+  onRerunOCR?: () => void;
 }
 
 export function EditorLayout({
@@ -28,6 +29,7 @@ export function EditorLayout({
   imageHeight,
   textRegions: initialTextRegions,
   onReset,
+  onRerunOCR,
 }: EditorLayoutProps) {
   const [textRegions, setTextRegions] = useState<TextRegion[]>(initialTextRegions);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
@@ -170,6 +172,7 @@ export function EditorLayout({
         onCopy={handleCopy}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onRerunOCR={onRerunOCR}
         disabled={!canvas}
       />
 

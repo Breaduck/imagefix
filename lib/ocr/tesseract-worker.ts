@@ -197,8 +197,52 @@ export async function terminateWorker(): Promise<void> {
 }
 
 /**
- * 이미지 전처리 (선택적)
- * OCR 정확도 향상을 위한 이미지 전처리
+ * 이미지 전처리: grayscale + contrast + sharpen
+ */
+export function preprocessImageAdvanced(imageUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas context not available'));
+        return;
+      }
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // 1. Grayscale
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        data[i] = data[i + 1] = data[i + 2] = gray;
+      }
+
+      // 2. Contrast enhancement
+      const contrast = 1.3;
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+        data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+        data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL());
+    };
+    img.onerror = reject;
+    img.src = imageUrl;
+  });
+}
+
+/**
+ * 이미지 전처리 (선택적) - 기존 함수 유지
  */
 export function preprocessImage(
   imageElement: HTMLImageElement

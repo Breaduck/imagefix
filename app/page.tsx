@@ -139,7 +139,27 @@ export default function Home() {
     setStage('upload');
   };
 
+  const handleRerunOCR = async () => {
+    if (!imageData) {
+      console.warn('[OCR] No image data available for re-run');
+      return;
+    }
+
+    try {
+      console.log('[OCR] Re-running OCR for current image');
+      setStage('processing');
+      await extractText(imageData.dataUrl, imageData.width, imageData.height);
+      setStage('editing');
+      console.log('[OCR] Re-run complete');
+    } catch (err) {
+      console.error('[OCR] Re-run failed:', err);
+      alert('OCR 재실행 중 오류가 발생했습니다.');
+      setStage('editing');
+    }
+  };
+
   const handlePageChange = async (newPage: number) => {
+    console.log(`[PDF UI] page -> ${newPage}/${totalPages}`);
     console.log(`[PDF] Page change requested: ${currentPage} → ${newPage} (total: ${totalPages})`);
 
     if (!pdfFile || newPage < 1 || newPage > totalPages) {
@@ -151,6 +171,7 @@ export default function Home() {
       setStage('processing');
       console.log(`[PDF] Extracting page ${newPage}...`);
       const result = await extractFromPDF(pdfFile, newPage);
+      console.log(`[Extract] page=${newPage} items=${result.textContent.items.length} regions=${result.textRegions.length}`);
       console.log(`[PDF] Page ${newPage} extracted: ${result.textRegions.length} text regions`);
 
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -309,6 +330,7 @@ export default function Home() {
               imageHeight={imageData.height}
               textRegions={textRegions}
               onReset={handleReset}
+              onRerunOCR={handleRerunOCR}
             />
           ) : null}
         </>
