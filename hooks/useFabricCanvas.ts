@@ -45,7 +45,7 @@ export function useFabricCanvas(
     } catch (error) {
       console.error('[useFabricCanvas] Failed to initialize canvas:', error);
     }
-  }, [width, height, canvas]);
+  }, [width, height]);
 
   // 컴포넌트 언마운트 시에만 정리
   useEffect(() => {
