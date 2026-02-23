@@ -8,6 +8,7 @@ import { useCallback } from 'react';
 import { useOCR } from './useOCR';
 import { TextRegion } from '@/types/canvas.types';
 import { extractDominantColor } from '@/lib/style/color-extractor';
+import { OCRProvider } from '@/lib/ocr/providers';
 
 export interface UseTextExtractionReturn {
   isProcessing: boolean;
@@ -18,8 +19,8 @@ export interface UseTextExtractionReturn {
   clearResults: () => void;
 }
 
-export function useTextExtraction(): UseTextExtractionReturn {
-  const { isProcessing, progress, error, textRegions, processImage, clearResults } = useOCR();
+export function useTextExtraction(provider: OCRProvider = 'tesseract'): UseTextExtractionReturn {
+  const { isProcessing, progress, error, textRegions, processImage, clearResults } = useOCR(provider);
 
   /**
    * 이미지에서 텍스트 추출 + 스타일 분석

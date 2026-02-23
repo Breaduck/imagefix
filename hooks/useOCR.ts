@@ -5,13 +5,14 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { recognizeText, initializeWorker, terminateWorker } from '@/lib/ocr/tesseract-worker';
+import { terminateWorker } from '@/lib/ocr/tesseract-worker';
 import {
   convertOCRResultsToTextRegions,
   filterByConfidence,
   sortTextRegions,
 } from '@/lib/ocr/text-detector';
 import { TextRegion } from '@/types/canvas.types';
+import { createOCRProvider, OCRProvider } from '@/lib/ocr/providers';
 
 export interface UseOCRReturn {
   isProcessing: boolean;
@@ -23,13 +24,14 @@ export interface UseOCRReturn {
   cleanup: () => Promise<void>;
 }
 
-export function useOCR(): UseOCRReturn {
+export function useOCR(provider: OCRProvider = 'tesseract'): UseOCRReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [textRegions, setTextRegions] = useState<TextRegion[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const ocrProvider = createOCRProvider(provider);
 
   /**
    * 이미지에서 텍스트 추출 및 처리
@@ -50,8 +52,11 @@ export function useOCR(): UseOCRReturn {
 
       try {
         // OCR 처리
-        const ocrResults = await recognizeText(imageUrl, (p) => {
-          setProgress(p * 100);
+        console.log(`[useOCR] Using provider: ${provider}`);
+        const ocrResults = await ocrProvider.recognize(imageUrl, {
+          onProgress: (p) => {
+            setProgress(p * 100);
+          },
         });
 
         console.log(`[useOCR] OCR completed. Found ${ocrResults.length} text regions.`);

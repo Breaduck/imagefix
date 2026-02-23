@@ -10,12 +10,14 @@ import { useTextExtraction } from '@/hooks/useTextExtraction';
 import { usePDFExtraction } from '@/hooks/usePDFExtraction';
 import { PDFPageData } from '@/types/pdf.types';
 import { isTextLayerUsable, renderPDFPage, loadPDF } from '@/lib/pdf/pdf-text-extractor';
+import { OCRProvider } from '@/lib/ocr/providers';
 
 type FileType = 'image' | 'pdf';
 
 export default function Home() {
+  const [ocrProvider, setOcrProvider] = useState<OCRProvider>('tesseract');
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
-  const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction();
+  const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction(ocrProvider);
   const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, totalPages, currentPage, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
 
   const [stage, setStage] = useState<'upload' | 'processing' | 'editing'>('upload');
@@ -215,6 +217,41 @@ export default function Home() {
                   <LoadingSpinner message="이미지 로딩 중..." />
                 </div>
               )}
+            </div>
+
+            {/* OCR Provider Selection */}
+            <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <h3 className="font-semibold mb-3">OCR 품질 선택</h3>
+              <div className="flex gap-4">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="ocrProvider"
+                    value="tesseract"
+                    checked={ocrProvider === 'tesseract'}
+                    onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                    className="mr-2"
+                  />
+                  <div>
+                    <span className="font-medium">기본 OCR (Tesseract)</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">클라이언트 측 처리, 무료, 빠름</p>
+                  </div>
+                </label>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="ocrProvider"
+                    value="clova"
+                    checked={ocrProvider === 'clova'}
+                    onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                    className="mr-2"
+                  />
+                  <div>
+                    <span className="font-medium">고품질 OCR (CLOVA)</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">서버 측 처리, 높은 정확도, API 키 필요</p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {/* Instructions */}
