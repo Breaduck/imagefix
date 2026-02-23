@@ -38,7 +38,13 @@ export default function Home() {
         console.log('[HomePage] Starting PDF processing');
         setStage('processing');
         const result = await extractFromPDF(file, 1);
-        console.log('[HomePage] PDF processing complete, text regions:', result.textRegions.length);
+        console.log('[HomePage] PDF processing complete:', {
+          pageNumber: result.pageNumber,
+          textRegions: result.textRegions.length,
+          totalPages: totalPages,
+          currentPage: currentPage,
+          viewportSize: `${result.viewport.width}x${result.viewport.height}`
+        });
 
         // 텍스트가 없으면 OCR 제안
         if (result.textRegions.length === 0) {
@@ -82,6 +88,12 @@ export default function Home() {
 
         // DOM 정리를 위한 짧은 딜레이
         await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('[HomePage] PDF ready for editing:', {
+          fileType,
+          hasPageData: !!pageData,
+          totalPages,
+          currentPage
+        });
         setStage('editing');
       } else {
         // 이미지 처리 (기존 OCR)
@@ -270,8 +282,8 @@ export default function Home() {
             <PDFEditorLayout
               key={`pdf-page-${pageData.pageNumber}`}
               pageData={pageData}
-              currentPage={currentPage}
-              totalPages={totalPages}
+              currentPage={pageData.pageNumber}
+              totalPages={pageData.totalPages}
               onPageChange={handlePageChange}
               onReset={handleReset}
             />

@@ -144,6 +144,7 @@ export function convertPDFTextItemsToRegions(
 export async function extractPDFPageData(
   page: any,
   pageNumber: number,
+  totalPages: number,
   scale: number = 2.0
 ): Promise<PDFPageData> {
   // 1. 페이지 렌더링 (배경 이미지)
@@ -160,6 +161,7 @@ export async function extractPDFPageData(
 
   return {
     pageNumber,
+    totalPages,
     viewport: {
       width: viewport.width,
       height: viewport.height,
@@ -180,7 +182,7 @@ export async function extractAllPDFPages(pdf: any, scale: number = 2.0): Promise
 
   for (let i = 1; i <= numPages; i++) {
     const page = await pdf.getPage(i);
-    const pageData = await extractPDFPageData(page, i, scale);
+    const pageData = await extractPDFPageData(page, i, numPages, scale);
     pages.push(pageData);
   }
 

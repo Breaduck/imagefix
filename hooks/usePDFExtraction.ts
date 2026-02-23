@@ -60,7 +60,7 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
 
         // 페이지 추출
         const page = await pdf.getPage(pageNumber);
-        const data = await extractPDFPageData(page, pageNumber, 2.0);
+        const data = await extractPDFPageData(page, pageNumber, pdf.numPages, 2.0);
 
         setProgress(100);
 

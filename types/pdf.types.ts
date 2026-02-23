@@ -49,6 +49,7 @@ export interface PDFTextRegion {
 
 export interface PDFPageData {
   pageNumber: number;
+  totalPages: number;
   viewport: {
     width: number;
     height: number;
