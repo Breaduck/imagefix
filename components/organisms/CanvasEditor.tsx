@@ -177,7 +177,19 @@ export function CanvasEditor({
         console.log('[CanvasEditor] 📐 Scale factors:', { scaleX, scaleY });
 
         // 좌표계 변환된 textRegions 생성
-        const scaledRegions = textRegions.map((region) => ({
+        // Separate regions by confidence:
+        // - maskRegions (conf>=15): for background baking (more coverage, removes low-conf artifacts)
+        // - editableRegions (conf>=60): for Fabric text objects (high quality only)
+        const maskRegions = textRegions.filter((r) => r.confidence >= 15);
+        const editableRegions = textRegions.filter((r) => r.confidence >= 60);
+
+        console.log('[CanvasEditor] Region separation:', {
+          total: textRegions.length,
+          maskRegions: maskRegions.length,
+          editableRegions: editableRegions.length,
+        });
+
+        const scaledMaskRegions = maskRegions.map((region) => ({
           ...region,
           position: {
             x: region.position.x * scaleX,
@@ -189,9 +201,21 @@ export function CanvasEditor({
           },
         }));
 
-        // Step 2: Bake text masks into background (NO FABRIC OBJECTS!)
-        console.log('[CanvasEditor] 🔥 Baking text masks to background...');
-        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, scaledRegions, {
+        const scaledEditableRegions = editableRegions.map((region) => ({
+          ...region,
+          position: {
+            x: region.position.x * scaleX,
+            y: region.position.y * scaleY,
+          },
+          size: {
+            width: region.size.width * scaleX,
+            height: region.size.height * scaleY,
+          },
+        }));
+
+        // Step 2: Bake MASK regions into background (conf>=15, more coverage)
+        console.log('[CanvasEditor] 🔥 Baking', scaledMaskRegions.length, 'mask regions to background...');
+        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, scaledMaskRegions, {
           method: 'smart',
         });
 
@@ -215,10 +239,11 @@ export function CanvasEditor({
             const objectTypes = canvas.getObjects().map((o: any) => o.type);
             console.log('[CanvasEditor] 🔍 Canvas objects before adding text:', objectTypes);
 
-            // Step 4: Add only text objects (no masks!)
-            textRegions.forEach((region, index) => {
+            // Step 4: Add only EDITABLE text objects (conf>=60, high quality only!)
+            console.log('[CanvasEditor] Adding', editableRegions.length, 'editable text objects');
+            editableRegions.forEach((region, index) => {
               if (index < 3) {
-                console.log(`[CanvasEditor] Adding text object ${index}:`, {
+                console.log(`[CanvasEditor] Adding editable text ${index} (conf=${region.confidence.toFixed(1)}%):`, {
                   text: region.text.substring(0, 30),
                   position: region.position,
                   fontSize: region.style.fontSize,

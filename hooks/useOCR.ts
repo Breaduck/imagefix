@@ -64,13 +64,15 @@ export function useOCR(provider: OCRProvider = 'tesseract'): UseOCRReturn {
         // OCR 결과를 TextRegion으로 변환
         let regions = convertOCRResultsToTextRegions(ocrResults, imageWidth, imageHeight);
 
-        // 신뢰도 낮은 결과 필터링 (50% 이상으로 완화하여 영어 인식률 향상)
-        regions = filterByConfidence(regions, 50);
+        // 신뢰도 낮은 결과 필터링 (15% 이상, CanvasEditor에서 mask/editable 분리)
+        // maskRegions: conf>=15 (background baking용)
+        // editableRegions: conf>=60 (Fabric text objects용)
+        regions = filterByConfidence(regions, 15);
 
         // 정렬 (위에서 아래, 왼쪽에서 오른쪽)
         regions = sortTextRegions(regions);
 
-        console.log(`[useOCR] After filtering: ${regions.length} text regions.`);
+        console.log(`[useOCR] After filtering (conf>=15): ${regions.length} text regions.`);
 
         setTextRegions(regions);
         setProgress(100);
