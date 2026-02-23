@@ -8,7 +8,6 @@ import React, { useEffect, useState, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '@/hooks/useFabricCanvas';
 import { TextRegion } from '@/types/canvas.types';
-import { addBackgroundImage } from '@/lib/canvas/fabric-utils';
 import { bakeTextMasksToBackground } from '@/lib/canvas/background-baker';
 import { CanvasHistory } from '@/lib/canvas/history-manager';
 
@@ -68,14 +67,14 @@ export function CanvasEditor({
     };
   }, [canvas, isReady, onHistoryReady]);
 
-  // 배경 이미지 로드
+  // 배경 이미지 로드 (베이킹용, Fabric 오브젝트로 추가하지 않음!)
   useEffect(() => {
     if (!canvas || !imageUrl) {
       console.log('[CanvasEditor] Waiting for canvas or imageUrl', { canvas: !!canvas, imageUrl: !!imageUrl });
       return;
     }
 
-    console.log('[CanvasEditor] Loading background image');
+    console.log('[CanvasEditor] Loading background image (for baking only, not as Fabric object)');
     setIsLoading(true);
 
     let isMounted = true;
@@ -91,21 +90,24 @@ export function CanvasEditor({
         return;
       }
 
-      console.log('[CanvasEditor] Image loaded, adding to canvas');
-      setBackgroundImg(img);
+      console.log('[CanvasEditor] ✅ Image loaded:', {
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        displayWidth: img.width,
+        displayHeight: img.height,
+      });
 
-      // 캔버스에 배경 이미지 추가
-      addBackgroundImage(canvas, imageUrl)
-        .then(() => {
-          if (!isMounted) return;
-          console.log('[CanvasEditor] Background image added successfully');
-          setIsLoading(false);
-        })
-        .catch((error) => {
-          if (!isMounted) return;
-          console.error('[CanvasEditor] Failed to add background image:', error);
-          setIsLoading(false);
-        });
+      // 기존 배경 오브젝트 제거 (이중 배경 방지)
+      const existingBgObjects = canvas.getObjects().filter((obj: any) =>
+        obj.layerName === 'background-image' || obj.type === 'image'
+      );
+      existingBgObjects.forEach((obj) => {
+        console.log('[CanvasEditor] Removing existing background object:', obj.type);
+        canvas.remove(obj);
+      });
+
+      setBackgroundImg(img);
+      setIsLoading(false);
     };
 
     img.onerror = (error) => {
@@ -146,7 +148,7 @@ export function CanvasEditor({
         const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
         existingTexts.forEach((obj) => canvas.remove(obj));
 
-        // Step 1: Create background canvas from image
+        // Step 1: Create background canvas from image (naturalWidth/naturalHeight 사용)
         const bgCanvas = document.createElement('canvas');
         const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -154,15 +156,43 @@ export function CanvasEditor({
           throw new Error('Failed to get canvas context');
         }
 
-        bgCanvas.width = backgroundImg.width;
-        bgCanvas.height = backgroundImg.height;
+        // naturalWidth/naturalHeight를 사용하여 좌표계 정합성 보장
+        bgCanvas.width = backgroundImg.naturalWidth;
+        bgCanvas.height = backgroundImg.naturalHeight;
         bgCtx.drawImage(backgroundImg, 0, 0);
+
+        console.log('[CanvasEditor] 📏 Background dimensions:', {
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          bgCanvasWidth: bgCanvas.width,
+          bgCanvasHeight: bgCanvas.height,
+          naturalWidth: backgroundImg.naturalWidth,
+          naturalHeight: backgroundImg.naturalHeight,
+        });
+
+        // 스케일 factor 계산 (region bbox는 Fabric canvas 좌표계)
+        const scaleX = bgCanvas.width / (canvas.width || 1);
+        const scaleY = bgCanvas.height / (canvas.height || 1);
+
+        console.log('[CanvasEditor] 📐 Scale factors:', { scaleX, scaleY });
+
+        // 좌표계 변환된 textRegions 생성
+        const scaledRegions = textRegions.map((region) => ({
+          ...region,
+          position: {
+            x: region.position.x * scaleX,
+            y: region.position.y * scaleY,
+          },
+          size: {
+            width: region.size.width * scaleX,
+            height: region.size.height * scaleY,
+          },
+        }));
 
         // Step 2: Bake text masks into background (NO FABRIC OBJECTS!)
         console.log('[CanvasEditor] 🔥 Baking text masks to background...');
-        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, textRegions, {
+        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, scaledRegions, {
           method: 'smart',
-          padding: 10,
         });
 
         if (!isMounted) return;
@@ -170,6 +200,8 @@ export function CanvasEditor({
         // Step 3: Set baked background as canvas background
         console.log('[CanvasEditor] Setting baked background as canvas background');
         const bakedDataUrl = bakedBackground.toDataURL();
+
+        console.log('[CanvasEditor] 🖼️ Baked background dataURL length:', bakedDataUrl.length);
 
         canvas.setBackgroundImage(
           bakedDataUrl,
@@ -179,13 +211,19 @@ export function CanvasEditor({
             canvas.renderAll();
             console.log('[CanvasEditor] ✅ Baked background set');
 
+            // 디버그: 현재 캔버스 오브젝트 타입 출력
+            const objectTypes = canvas.getObjects().map((o: any) => o.type);
+            console.log('[CanvasEditor] 🔍 Canvas objects before adding text:', objectTypes);
+
             // Step 4: Add only text objects (no masks!)
             textRegions.forEach((region, index) => {
-              console.log(`[CanvasEditor] Adding text object ${index}:`, {
-                text: region.text.substring(0, 30),
-                position: region.position,
-                fontSize: region.style.fontSize,
-              });
+              if (index < 3) {
+                console.log(`[CanvasEditor] Adding text object ${index}:`, {
+                  text: region.text.substring(0, 30),
+                  position: region.position,
+                  fontSize: region.style.fontSize,
+                });
+              }
 
               const textObj = new fabric.IText(region.text, {
                 left: region.position.x,
@@ -214,8 +252,11 @@ export function CanvasEditor({
               historyRef.current.endProgrammaticUpdate();
             }
 
+            // 디버그: 최종 캔버스 오브젝트 타입 출력
+            const finalObjectTypes = canvas.getObjects().map((o: any) => o.type);
+            console.log('[CanvasEditor] 🔍 Final canvas objects:', finalObjectTypes);
             console.log('[CanvasEditor] ✅ Text objects added. Total objects:', canvas.getObjects().length);
-            console.log('[CanvasEditor] 🎉 Background baking complete - NO MASK OBJECTS!');
+            console.log('[CanvasEditor] 🎉 Background baking complete - NO MASK/IMAGE OBJECTS!');
           },
           {
             crossOrigin: 'anonymous',

@@ -32,10 +32,14 @@ export async function bakeTextMasksToBackground(
     method?: 'simple' | 'smart' | 'inpaint';
   } = {}
 ): Promise<HTMLCanvasElement> {
-  const { padding = 10, method = 'smart' } = options;
+  const { method = 'smart' } = options;
 
   console.log('[BackgroundBaker] 🔥 Baking', textRegions.length, 'text masks to background');
   console.log('[BackgroundBaker] Method:', method);
+  console.log('[BackgroundBaker] Canvas size:', {
+    width: backgroundCanvas.width,
+    height: backgroundCanvas.height,
+  });
 
   // 새 캔버스 생성 (원본은 유지)
   const bakedCanvas = document.createElement('canvas');
@@ -53,6 +57,11 @@ export async function bakeTextMasksToBackground(
   // 각 텍스트 영역을 배경으로 채우기
   for (let i = 0; i < textRegions.length; i++) {
     const region = textRegions[i];
+
+    // fontSize 비례 padding (최소 8px, fontSize의 35%)
+    const fontSize = region.style?.fontSize || 16;
+    const dynamicPadding = Math.max(8, fontSize * 0.35);
+    const padding = options.padding !== undefined ? options.padding : dynamicPadding;
 
     const bbox = {
       x: Math.max(0, Math.floor(region.position.x - padding)),
@@ -77,6 +86,8 @@ export async function bakeTextMasksToBackground(
       console.log(`[BackgroundBaker] Baked region ${i}:`, {
         text: region.text.substring(0, 20),
         bbox,
+        fontSize,
+        padding: padding.toFixed(1),
         method,
       });
     }
