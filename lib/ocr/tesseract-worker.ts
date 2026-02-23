@@ -3,10 +3,44 @@
  */
 
 import { createWorker, Worker, PSM } from 'tesseract.js';
-import { TESSERACT_CONFIG, OCR_OPTIONS } from './language-config';
+import { TESSERACT_CONFIG, OCR_OPTIONS, getLangPathCandidates } from './language-config';
 import { OCRResult, BoundingBox, OCRWord } from '@/types/ocr.types';
 
 let worker: Worker | null = null;
+
+/**
+ * createWorker with fallback retry
+ */
+async function createWorkerWithFallback(
+  lang: string,
+  oem?: any,
+  options?: any
+): Promise<Worker> {
+  const candidates = getLangPathCandidates();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const langPath = candidates[i];
+    console.log(`[Tesseract] try langPath=${langPath}`);
+
+    try {
+      const w = await createWorker(lang, oem, {
+        ...options,
+        langPath,
+      });
+      console.log(`[Tesseract] langPath succeeded: ${langPath}`);
+      return w;
+    } catch (err) {
+      console.warn(`[Tesseract] langPath failed: ${langPath}`, err);
+      if (i < candidates.length - 1) {
+        console.log(`[Tesseract] retrying with next candidate...`);
+      } else {
+        throw new Error(`All langPath candidates failed: ${err}`);
+      }
+    }
+  }
+
+  throw new Error('No valid langPath found');
+}
 
 /**
  * Tesseract 워커 초기화
@@ -19,10 +53,8 @@ export async function initializeWorker(
   }
 
   console.log(`[Tesseract] Initializing worker with languages: ${OCR_OPTIONS.lang}`);
-  console.log(`[Tesseract] Language data path: ${TESSERACT_CONFIG.langPath}`);
 
-  worker = await createWorker(OCR_OPTIONS.lang, undefined, {
-    langPath: TESSERACT_CONFIG.langPath,
+  worker = await createWorkerWithFallback(OCR_OPTIONS.lang, undefined, {
     logger: (m: any) => {
       console.log(`[Tesseract] ${m.status}: ${m.progress}`);
       if (onProgress && m.progress) {
@@ -50,9 +82,7 @@ export async function recognizeTextTwoPass(
   console.log('[Tesseract] Starting two-pass OCR (eng + kor)');
 
   // Pass 1: English (PSM.SPARSE for slides)
-  const workerEng = await createWorker('eng', undefined, {
-    langPath: TESSERACT_CONFIG.langPath,
-  });
+  const workerEng = await createWorkerWithFallback('eng');
   await workerEng.setParameters({
     tessedit_pageseg_mode: PSM.SPARSE_TEXT, // Better for slides
   });
@@ -62,9 +92,7 @@ export async function recognizeTextTwoPass(
   if (onProgress) onProgress(0.5);
 
   // Pass 2: Korean
-  const workerKor = await createWorker('kor', undefined, {
-    langPath: TESSERACT_CONFIG.langPath,
-  });
+  const workerKor = await createWorkerWithFallback('kor');
   await workerKor.setParameters({
     tessedit_pageseg_mode: PSM.SPARSE_TEXT,
   });

@@ -9,13 +9,23 @@ export const TESSERACT_LANGUAGES = {
 } as const;
 
 /**
- * langPath 우선순위:
- * 1) NEXT_PUBLIC_TESS_LANG_PATH (env override)
- * 2) projectnaptha CDN (default)
+ * langPath candidates with fallback
+ * Priority: env > projectnaptha > jsdelivr
  */
-export const getTessLangPath = () =>
-  process.env.NEXT_PUBLIC_TESS_LANG_PATH ||
-  'https://tessdata.projectnaptha.com/4.0.0';
+export const getLangPathCandidates = (): string[] => {
+  const candidates = [
+    'https://tessdata.projectnaptha.com/4.0.0',
+    'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5/tessdata',
+  ];
+
+  if (process.env.NEXT_PUBLIC_TESS_LANG_PATH) {
+    candidates.unshift(process.env.NEXT_PUBLIC_TESS_LANG_PATH);
+  }
+
+  return candidates;
+};
+
+export const getTessLangPath = () => getLangPathCandidates()[0];
 
 export const TESSERACT_CONFIG = {
   get langPath() {
