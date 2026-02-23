@@ -57,15 +57,19 @@ export function useOCR(): UseOCRReturn {
         console.log(`[useOCR] OCR completed. Found ${ocrResults.length} text regions.`);
 
         // OCR 결과를 TextRegion으로 변환
-        let regions = convertOCRResultsToTextRegions(ocrResults, imageWidth, imageHeight);
+        let allRegions = convertOCRResultsToTextRegions(ocrResults, imageWidth, imageHeight);
 
-        // 신뢰도 낮은 결과 필터링 (50% 이상으로 완화하여 영어 인식률 향상)
-        regions = filterByConfidence(regions, 50);
+        // 2종 분리: maskRegions (conf>=15), editableRegions (conf>=60)
+        const maskRegions = filterByConfidence(allRegions, 15);
+        const editableRegions = filterByConfidence(allRegions, 60);
+
+        console.log(`[OCR] raw=${allRegions.length} mask=${maskRegions.length} editable=${editableRegions.length}`);
+        console.log(`[Coord] ocr=${imageWidth}x${imageHeight} canvas=${imageWidth}x${imageHeight} down=1.000/1.000`);
 
         // 정렬 (위에서 아래, 왼쪽에서 오른쪽)
-        regions = sortTextRegions(regions);
+        const regions = sortTextRegions(editableRegions);
 
-        console.log(`[useOCR] After filtering: ${regions.length} text regions.`);
+        console.log(`[useOCR] After filtering: ${regions.length} editable text regions.`);
 
         setTextRegions(regions);
         setProgress(100);
