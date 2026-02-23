@@ -163,23 +163,6 @@ export default function Home() {
                 <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
               </ol>
 
-              <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
-                <p className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-2">
-                  ⚠️ 첫 실행 전 필수 설정
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Tesseract 언어 데이터 파일이 필요합니다:
-                </p>
-                <code className="block mt-2 text-xs bg-gray-800 text-green-400 p-2 rounded">
-                  cd public/tessdata
-                  <br />
-                  curl -L https://github.com/tesseract-ocr/tessdata/raw/main/kor.traineddata -o
-                  kor.traineddata
-                  <br />
-                  curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o
-                  eng.traineddata
-                </code>
-              </div>
             </div>
 
             {/* Features */}
