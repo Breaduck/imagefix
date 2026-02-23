@@ -159,24 +159,33 @@ export default function Home() {
   };
 
   const handlePageChange = async (newPage: number) => {
-    console.log(`[PDF UI] page -> ${newPage}/${totalPages}`);
-    console.log(`[PDF] Page change requested: ${currentPage} → ${newPage} (total: ${totalPages})`);
+    const maxPages = pageData?.totalPages || totalPages;
+    const current = pageData?.pageNumber || currentPage;
 
-    if (!pdfFile || newPage < 1 || newPage > totalPages) {
-      console.warn('[PDF] Invalid page change request:', { pdfFile: !!pdfFile, newPage, totalPages });
+    console.log(`[Nav] click next: current=${current} total=${maxPages} loading=${isPDFProcessing} newPage=${newPage}`);
+    console.log(`[PDF UI] page -> ${newPage}/${maxPages}`);
+
+    if (!pdfFile) {
+      console.warn('[PDF] No PDF file available');
+      return;
+    }
+
+    // Clamp page number
+    const clampedPage = Math.max(1, Math.min(maxPages, newPage));
+    if (clampedPage !== newPage) {
+      console.warn(`[PDF] Page ${newPage} out of bounds, clamped to ${clampedPage}`);
       return;
     }
 
     try {
       setStage('processing');
-      console.log(`[PDF] Extracting page ${newPage}...`);
-      const result = await extractFromPDF(pdfFile, newPage);
-      console.log(`[Extract] page=${newPage} items=${result.textContent.items.length} regions=${result.textRegions.length}`);
-      console.log(`[PDF] Page ${newPage} extracted: ${result.textRegions.length} text regions`);
+      console.log(`[PDF] Extracting page ${clampedPage}...`);
+      const result = await extractFromPDF(pdfFile, clampedPage);
+      console.log(`[Extract] page=${clampedPage} items=${result.textContent.items.length} regions=${result.textRegions.length}`);
+      console.log(`[Nav] state: current=${result.pageNumber} total=${result.totalPages}`);
 
       await new Promise(resolve => setTimeout(resolve, 100));
       setStage('editing');
-      console.log(`[PDF] Page ${newPage} ready for editing`);
     } catch (err) {
       console.error('[HomePage] Error changing page:', err);
       alert('페이지 변경 중 오류가 발생했습니다.');
