@@ -53,21 +53,46 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate, onHistor
   useEffect(() => {
     if (!canvas || !pageData) return;
 
+    console.log(`[PDFCanvasEditor] Rendering PDF page ${pageData.pageNumber}`);
     setIsLoading(true);
     let isMounted = true;
+
+    // Pause history tracking during page change
+    if (historyRef.current) {
+      historyRef.current.startProgrammaticUpdate();
+    }
+
+    // 🔥 CRITICAL: Clear canvas before rendering new page
+    console.log(`[PDFCanvasEditor] Clearing canvas (current objects: ${canvas.getObjects().length})`);
+    canvas.clear();
 
     // 1. 배경 이미지 추가
     addPDFPageAsBackground(canvas, pageData.canvas)
       .then(() => {
         if (!isMounted) return;
+        console.log(`[PDFCanvasEditor] Background added for page ${pageData.pageNumber}`);
+
         // 2. 텍스트 영역 렌더링
+        console.log(`[PDFCanvasEditor] Rendering ${pageData.textRegions.length} text regions`);
         renderPDFTextRegions(canvas, pageData.textRegions);
+
+        console.log(`[PDFCanvasEditor] ✅ Page ${pageData.pageNumber} rendered (total objects: ${canvas.getObjects().length})`);
         setIsLoading(false);
+
+        // Resume history tracking
+        if (historyRef.current) {
+          historyRef.current.endProgrammaticUpdate();
+        }
       })
       .catch((error) => {
         if (!isMounted) return;
-        console.error('Failed to render PDF page:', error);
+        console.error('[PDFCanvasEditor] Failed to render PDF page:', error);
         setIsLoading(false);
+
+        // Resume history tracking even on error
+        if (historyRef.current) {
+          historyRef.current.endProgrammaticUpdate();
+        }
       });
 
     return () => {

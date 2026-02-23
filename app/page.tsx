@@ -114,13 +114,22 @@ export default function Home() {
   };
 
   const handlePageChange = async (newPage: number) => {
-    if (!pdfFile || newPage < 1 || newPage > totalPages) return;
+    console.log(`[PDF] Page change requested: ${currentPage} → ${newPage} (total: ${totalPages})`);
+
+    if (!pdfFile || newPage < 1 || newPage > totalPages) {
+      console.warn('[PDF] Invalid page change request:', { pdfFile: !!pdfFile, newPage, totalPages });
+      return;
+    }
 
     try {
       setStage('processing');
-      await extractFromPDF(pdfFile, newPage);
+      console.log(`[PDF] Extracting page ${newPage}...`);
+      const result = await extractFromPDF(pdfFile, newPage);
+      console.log(`[PDF] Page ${newPage} extracted: ${result.textRegions.length} text regions`);
+
       await new Promise(resolve => setTimeout(resolve, 100));
       setStage('editing');
+      console.log(`[PDF] Page ${newPage} ready for editing`);
     } catch (err) {
       console.error('[HomePage] Error changing page:', err);
       alert('페이지 변경 중 오류가 발생했습니다.');

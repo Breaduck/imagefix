@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PDFCanvasEditor } from '@/components/organisms/PDFCanvasEditor';
 import { TextSidebar } from '@/components/organisms/TextSidebar';
 import { TextStyleControls } from '@/components/molecules/TextStyleControls';
@@ -25,7 +25,7 @@ export interface PDFEditorLayoutProps {
 
 export function PDFEditorLayout({ pageData, currentPage, totalPages, onPageChange, onReset }: PDFEditorLayoutProps) {
   // PDF TextRegion을 일반 TextRegion으로 변환
-  const convertToTextRegions = (pdfRegions: PDFTextRegion[]): TextRegion[] => {
+  const convertToTextRegions = useCallback((pdfRegions: PDFTextRegion[]): TextRegion[] => {
     return pdfRegions.map((region) => ({
       id: region.id,
       text: region.text,
@@ -44,11 +44,18 @@ export function PDFEditorLayout({ pageData, currentPage, totalPages, onPageChang
       },
       confidence: 100, // PDF는 신뢰도 100%
     }));
-  };
+  }, []);
 
   const [textRegions, setTextRegions] = useState<TextRegion[]>(
     convertToTextRegions(pageData.textRegions)
   );
+
+  // 🔥 페이지 변경 시 textRegions 업데이트
+  useEffect(() => {
+    console.log(`[PDFEditorLayout] Page changed to ${pageData.pageNumber}, updating text regions`);
+    console.log(`[PDFEditorLayout] Total text regions: ${pageData.textRegions.length}`);
+    setTextRegions(convertToTextRegions(pageData.textRegions));
+  }, [pageData.pageNumber, pageData.textRegions, convertToTextRegions]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
   const historyRef = useRef<CanvasHistory | null>(null);

@@ -38,23 +38,24 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
       setPageData(null);
 
       try {
-        console.log('[usePDFExtraction] Loading PDF...');
+        console.log(`[usePDFExtraction] Loading PDF for page ${pageNumber}...`);
         setProgress(20);
 
         // PDF 로드
         const pdf = await loadPDF(file);
         setProgress(40);
 
-        console.log(`[usePDFExtraction] PDF loaded. Pages: ${pdf.numPages}`);
+        console.log(`[usePDFExtraction] PDF loaded. Total pages: ${pdf.numPages}`);
 
         // 총 페이지 수 저장
         setTotalPages(pdf.numPages);
 
         // 페이지 범위 확인
         if (pageNumber < 1 || pageNumber > pdf.numPages) {
-          throw new Error(`Invalid page number. PDF has ${pdf.numPages} pages.`);
+          throw new Error(`Invalid page number ${pageNumber}. PDF has ${pdf.numPages} pages.`);
         }
 
+        console.log(`[usePDFExtraction] Extracting page ${pageNumber}/${pdf.numPages}...`);
         setProgress(60);
 
         // 페이지 추출
@@ -63,12 +64,12 @@ export function usePDFExtraction(): UsePDFExtractionReturn {
 
         setProgress(100);
 
-        console.log(
-          `[usePDFExtraction] Extracted ${data.textRegions.length} text regions from page ${pageNumber}`
-        );
+        console.log(`[usePDFExtraction] ✅ Page ${pageNumber} extracted successfully`);
+        console.log(`[usePDFExtraction] 📝 Text regions found: ${data.textRegions.length}`);
+        console.log(`[usePDFExtraction] 📐 Canvas size: ${data.viewport.width}x${data.viewport.height}`);
 
         if (data.textRegions.length === 0) {
-          console.warn('[usePDFExtraction] No text regions found! PDF may be image-based.');
+          console.warn('[usePDFExtraction] ⚠️ No text regions found! PDF may be image-based.');
           console.warn('[usePDFExtraction] Consider using OCR instead by converting PDF to image.');
         }
 
