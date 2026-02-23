@@ -41,51 +41,149 @@ export async function initializeWorker(
 }
 
 /**
- * 이미지에서 텍스트 추출
+ * Two-pass OCR: eng + kor 각각 실행 후 병합
+ */
+export async function recognizeTextTwoPass(
+  imageUrl: string,
+  onProgress?: (progress: number) => void
+): Promise<OCRResult[]> {
+  console.log('[Tesseract] Starting two-pass OCR (eng + kor)');
+
+  // Pass 1: English (PSM.SPARSE for slides)
+  const workerEng = await createWorker('eng', undefined, {
+    langPath: TESSERACT_CONFIG.langPath,
+  });
+  await workerEng.setParameters({
+    tessedit_pageseg_mode: PSM.SPARSE_TEXT, // Better for slides
+  });
+
+  const engResult = await workerEng.recognize(imageUrl);
+  await workerEng.terminate();
+  if (onProgress) onProgress(0.5);
+
+  // Pass 2: Korean
+  const workerKor = await createWorker('kor', undefined, {
+    langPath: TESSERACT_CONFIG.langPath,
+  });
+  await workerKor.setParameters({
+    tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+  });
+
+  const korResult = await workerKor.recognize(imageUrl);
+  await workerKor.terminate();
+  if (onProgress) onProgress(1.0);
+
+  // 결과 변환
+  const engLines = convertLinesToOCRResults(engResult.data.lines || []);
+  const korLines = convertLinesToOCRResults(korResult.data.lines || []);
+
+  console.log(`[Tesseract] Pass1 (eng): ${engLines.length} regions, Pass2 (kor): ${korLines.length} regions`);
+
+  // IoU 병합: 겹치는 영역은 confidence 높은 것 선택
+  const merged = mergeOCRResults(engLines, korLines);
+  console.log(`[Tesseract] Merged: ${merged.length} total regions`);
+
+  return merged;
+}
+
+/**
+ * 라인을 OCRResult로 변환
+ */
+function convertLinesToOCRResults(lines: any[]): OCRResult[] {
+  return (lines || [])
+    .map((line) => {
+      const bbox: BoundingBox = {
+        x0: line.bbox.x0,
+        y0: line.bbox.y0,
+        x1: line.bbox.x1,
+        y1: line.bbox.y1,
+      };
+
+      const lineWords: OCRWord[] = (line.words || []).map((word: any) => ({
+        text: word.text,
+        confidence: word.confidence,
+        bbox: {
+          x0: word.bbox.x0,
+          y0: word.bbox.y0,
+          x1: word.bbox.x1,
+          y1: word.bbox.y1,
+        },
+      }));
+
+      return {
+        text: line.text,
+        confidence: line.confidence,
+        bbox,
+        baseline: {
+          ...line.baseline,
+          hasDropCap: (line.baseline as any).hasDropCap || false,
+        },
+        words: lineWords,
+      };
+    })
+    .filter((result) => result.text.trim().length > 0);
+}
+
+/**
+ * IoU 기반 OCR 결과 병합
+ */
+function mergeOCRResults(engResults: OCRResult[], korResults: OCRResult[]): OCRResult[] {
+  const merged: OCRResult[] = [...engResults];
+  const IOU_THRESHOLD = 0.3; // 30% 이상 겹치면 중복으로 간주
+
+  for (const korRegion of korResults) {
+    let hasOverlap = false;
+
+    for (let i = 0; i < merged.length; i++) {
+      const iou = calculateIoU(merged[i].bbox, korRegion.bbox);
+
+      if (iou > IOU_THRESHOLD) {
+        hasOverlap = true;
+        // confidence 높은 것 선택
+        if (korRegion.confidence > merged[i].confidence) {
+          merged[i] = korRegion;
+        }
+        break;
+      }
+    }
+
+    // 겹치지 않으면 추가
+    if (!hasOverlap) {
+      merged.push(korRegion);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * IoU (Intersection over Union) 계산
+ */
+function calculateIoU(bbox1: BoundingBox, bbox2: BoundingBox): number {
+  const x1 = Math.max(bbox1.x0, bbox2.x0);
+  const y1 = Math.max(bbox1.y0, bbox2.y0);
+  const x2 = Math.min(bbox1.x1, bbox2.x1);
+  const y2 = Math.min(bbox1.y1, bbox2.y1);
+
+  if (x2 < x1 || y2 < y1) return 0; // No overlap
+
+  const intersection = (x2 - x1) * (y2 - y1);
+  const area1 = (bbox1.x1 - bbox1.x0) * (bbox1.y1 - bbox1.y0);
+  const area2 = (bbox2.x1 - bbox2.x0) * (bbox2.y1 - bbox2.y0);
+  const union = area1 + area2 - intersection;
+
+  return intersection / union;
+}
+
+/**
+ * 이미지에서 텍스트 추출 (기존 단일 패스, 호환성 유지)
  */
 export async function recognizeText(
   imageUrl: string,
   onProgress?: (progress: number) => void
 ): Promise<OCRResult[]> {
-  const currentWorker = await initializeWorker(onProgress);
-
-  const {
-    data: { words, lines },
-  } = await currentWorker.recognize(imageUrl);
-
-  // 라인 단위로 결과 변환
-  const results: OCRResult[] = (lines || []).map((line, index) => {
-    const bbox: BoundingBox = {
-      x0: line.bbox.x0,
-      y0: line.bbox.y0,
-      x1: line.bbox.x1,
-      y1: line.bbox.y1,
-    };
-
-    const lineWords: OCRWord[] = (line.words || []).map((word) => ({
-      text: word.text,
-      confidence: word.confidence,
-      bbox: {
-        x0: word.bbox.x0,
-        y0: word.bbox.y0,
-        x1: word.bbox.x1,
-        y1: word.bbox.y1,
-      },
-    }));
-
-    return {
-      text: line.text,
-      confidence: line.confidence,
-      bbox,
-      baseline: {
-        ...line.baseline,
-        hasDropCap: (line.baseline as any).hasDropCap || false,
-      },
-      words: lineWords,
-    };
-  });
-
-  return results.filter((result) => result.text.trim().length > 0);
+  // Two-pass OCR 사용
+  return recognizeTextTwoPass(imageUrl, onProgress);
 }
 
 /**

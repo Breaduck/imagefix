@@ -9,7 +9,7 @@ import { useImageUpload } from '@/hooks/useImageUpload';
 import { useTextExtraction } from '@/hooks/useTextExtraction';
 import { usePDFExtraction } from '@/hooks/usePDFExtraction';
 import { PDFPageData } from '@/types/pdf.types';
-import { isTextLayerUsable } from '@/lib/pdf/pdf-text-extractor';
+import { isTextLayerUsable, renderPDFPage, loadPDF } from '@/lib/pdf/pdf-text-extractor';
 
 type FileType = 'image' | 'pdf';
 
@@ -65,10 +65,15 @@ export default function Home() {
           );
 
           if (useOCR) {
-            console.log('[HomePage] Converting PDF to image for OCR');
+            console.log('[HomePage] Converting PDF to high-res image for OCR');
 
-            // PDF 페이지를 이미지로 변환하고 uploadImage 사용
-            const imageUrl = result.canvas.toDataURL('image/png');
+            // OCR용 고해상도 렌더링 (scale 3.5)
+            const pdf = await loadPDF(file);
+            const page = await pdf.getPage(1);
+            const highResCanvas = await renderPDFPage(page, 3.5);
+            console.log(`[HomePage] OCR image size: ${highResCanvas.width}x${highResCanvas.height}px`);
+
+            const imageUrl = highResCanvas.toDataURL('image/png');
 
             // Blob으로 변환
             const response = await fetch(imageUrl);

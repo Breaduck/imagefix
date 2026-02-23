@@ -84,9 +84,11 @@ export function PDFCanvasEditor({ pageData, onTextSelect, onTextUpdate, onHistor
         console.log(`[PDFCanvasEditor] ✅ Page ${pageData.pageNumber} rendered (total objects: ${canvas.getObjects().length})`);
         setIsLoading(false);
 
-        // Resume history tracking
+        // Resume history tracking and reset to current state as "first state"
         if (historyRef.current) {
           historyRef.current.endProgrammaticUpdate();
+          historyRef.current.clear(); // 현재 상태를 첫 번째 상태로 설정
+          console.log('[PDFCanvasEditor] History reset - current state is now the baseline');
         }
       })
       .catch((error) => {

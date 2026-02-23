@@ -178,7 +178,9 @@ export function convertPDFTextItemsToRegions(
     before: filtered.length,
     after: mergedRegions.length,
     reduction: `${filtered.length - mergedRegions.length} items merged`,
-    compressionRatio: `${((1 - mergedRegions.length / filtered.length) * 100).toFixed(1)}%`
+    compressionRatio: filtered.length > 0
+      ? `${((1 - mergedRegions.length / filtered.length) * 100).toFixed(1)}%`
+      : 'N/A'
   });
 
   return mergedRegions;
