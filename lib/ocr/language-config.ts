@@ -12,15 +12,15 @@ export const TESSERACT_LANGUAGES = {
  * langPath 우선순위:
  * 1) NEXT_PUBLIC_TESS_LANG_PATH (env override)
  * 2) projectnaptha CDN (default)
- * 3) jsdelivr CDN (fallback)
  */
-const DEFAULT_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
-const FALLBACK_LANG_PATH = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5/tessdata';
+export const getTessLangPath = () =>
+  process.env.NEXT_PUBLIC_TESS_LANG_PATH ||
+  'https://tessdata.projectnaptha.com/4.0.0';
 
 export const TESSERACT_CONFIG = {
-  langPath: typeof window !== 'undefined' && process.env.NEXT_PUBLIC_TESS_LANG_PATH
-    ? process.env.NEXT_PUBLIC_TESS_LANG_PATH
-    : DEFAULT_LANG_PATH,
+  get langPath() {
+    return getTessLangPath();
+  },
   logger: (m: { status: string; progress: number }) => {
     console.log(`[Tesseract] ${m.status}: ${Math.round(m.progress * 100)}%`);
   },
