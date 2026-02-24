@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ImageFix - 캡처 권한 허용</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h1 {
+      color: #1a202c;
+      margin-top: 0;
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #718096;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+    p {
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .why-section {
+      background: #f7fafc;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .why-section h3 {
+      margin-top: 0;
+      color: #2d3748;
+      font-size: 16px;
+    }
+    .why-section ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .why-section li {
+      margin: 5px 0;
+      color: #4a5568;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #grant-btn {
+      background: #667eea;
+      color: white;
+      margin-bottom: 10px;
+    }
+    #grant-btn:hover:not(:disabled) {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    #grant-btn:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .status.success {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+    .status.error {
+      background: #fed7d7;
+      color: #742a2a;
+    }
+    .note {
+      font-size: 12px;
+      color: #a0aec0;
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 ImageFix 캡처 권한</h1>
+    <p class="subtitle">NotebookLM 슬라이드 자동 캡처를 위한 1회 권한 승인</p>
+
+    <p>
+      ImageFix가 NotebookLM 슬라이드를 자동으로 캡처하려면
+      <strong>웹 페이지 접근 권한</strong>이 필요합니다.
+    </p>
+
+    <div class="why-section">
+      <h3>왜 이 권한이 필요한가요?</h3>
+      <ul>
+        <li>NotebookLM 페이지를 열고 슬라이드 스크린샷을 찍기 위해</li>
+        <li>슬라이드의 텍스트와 레이아웃 정보를 추출하기 위해</li>
+        <li>여러 슬라이드를 자동으로 순회하며 캡처하기 위해</li>
+      </ul>
+    </div>
+
+    <p>
+      권한은 <strong>1회만 승인</strong>하면 됩니다.
+      이후에는 자동으로 작동합니다.
+    </p>
+
+    <button id="grant-btn">✅ 캡처 권한 허용</button>
+
+    <div id="status" style="display: none;"></div>
+
+    <p class="note">
+      💡 권한은 언제든지 chrome://extensions에서 해제할 수 있습니다.
+    </p>
+  </div>
+
+  <script src="permission.js"></script>
+</body>
+</html>

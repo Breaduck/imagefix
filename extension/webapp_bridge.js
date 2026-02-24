@@ -74,6 +74,15 @@
         }
       );
     }
+
+    // Handle OPEN_CAPTURE_PERMISSION request
+    if (message?.type === 'OPEN_CAPTURE_PERMISSION' && message?.source === 'webapp') {
+      console.log('[Webapp Bridge] Opening permission page');
+
+      chrome.runtime.sendMessage({
+        type: 'OPEN_CAPTURE_PERMISSION'
+      });
+    }
   });
 
   /**
@@ -116,13 +125,15 @@
 
     // Forward errors to webapp
     if (request.type === 'IMAGEFIX_IMPORT_ERROR') {
-      console.log('[Webapp Bridge] Forwarding error to webapp:', request.message);
+      console.log('[Webapp Bridge] Forwarding IMPORT_ERROR code=', request.code || 'none', 'message=', request.message);
 
       window.postMessage(
         {
           type: 'IMAGEFIX_IMPORT_ERROR',
           requestId: request.requestId,
+          code: request.code,
           message: request.message,
+          detail: request.detail,
         },
         '*'
       );

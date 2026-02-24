@@ -11,9 +11,11 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://notebooklm.google.com/*",
     "http://localhost:3000/*",
     "https://imagefix-dun.vercel.app/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "service_worker.js"

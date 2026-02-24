@@ -35,6 +35,7 @@ export function LinkImportZone({
   const [diagnosticLogs, setDiagnosticLogs] = useState<DiagnosticLog[]>([]);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [permissionError, setPermissionError] = useState(false);
 
   // Add diagnostic log
   const addLog = useCallback((event: string, details: any = {}) => {
@@ -109,10 +110,16 @@ export function LinkImportZone({
       }
       // Handle import error
       else if (data?.type === 'IMAGEFIX_IMPORT_ERROR') {
-        addLog('IMPORT_ERROR', { message: data.message });
+        addLog('IMPORT_ERROR', { code: data.code, message: data.message });
         setIsImporting(false);
         setProgress('');
-        onImportError(data.message);
+
+        // Special handling for permission error
+        if (data.code === 'CAPTURE_PERMISSION_REQUIRED') {
+          setPermissionError(true);
+        } else {
+          onImportError(data.message);
+        }
       }
     };
 
@@ -189,15 +196,14 @@ export function LinkImportZone({
       return;
     }
 
-    if (extensionState !== 'CONNECTED') {
-      addLog('IMPORT_FAILED', { reason: 'Extension not ready', state: extensionState });
-      if (extensionState === 'NOT_INSTALLED') {
-        alert('확장프로그램이 설치되지 않았습니다. 먼저 설치해주세요.');
-      } else if (extensionState === 'INSTALLED_BUT_NO_PERMISSION') {
-        alert('확장프로그램에 NotebookLM 접근 권한이 없습니다. 확장프로그램 설정을 확인해주세요.');
-      }
+    if (extensionState === 'NOT_INSTALLED') {
+      addLog('IMPORT_FAILED', { reason: 'Extension not installed', state: extensionState });
+      alert('확장프로그램이 설치되지 않았습니다. 먼저 설치해주세요.');
       return;
     }
+
+    // Reset permission error state
+    setPermissionError(false);
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -217,6 +223,15 @@ export function LinkImportZone({
       '*'
     );
   }, [url, extensionState, onImportStart, addLog]);
+
+  // Handle permission grant button
+  const handleGrantPermission = useCallback(() => {
+    addLog('PERMISSION_GRANT_REQUESTED', {});
+    window.postMessage({
+      type: 'OPEN_CAPTURE_PERMISSION',
+      source: 'webapp',
+    }, '*');
+  }, [addLog]);
 
   // Copy diagnostic logs to clipboard
   const handleCopyDiagnostics = useCallback(() => {
@@ -503,6 +518,41 @@ export function LinkImportZone({
         </div>
       )}
 
+      {/* Permission Error Banner */}
+      {permissionError && (
+        <div className="p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-2 border-orange-300 dark:border-orange-700 rounded-lg">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                캡처 권한 필요
+              </h4>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                NotebookLM 슬라이드를 자동으로 캡처하려면 첫 1회 권한 승인이 필요합니다.
+                승인 후에는 영구적으로 사용할 수 있습니다.
+              </p>
+
+              <button
+                onClick={handleGrantPermission}
+                className="w-full px-4 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                ✅ 캡처 권한 허용하기
+              </button>
+
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                💡 권한 승인 후 이 페이지로 돌아와서 다시 "슬라이드 가져오기"를 클릭하세요.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Extension Status Banner - CHECKING */}
       {extensionState === 'CHECKING' && (
         <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
@@ -542,7 +592,7 @@ export function LinkImportZone({
       {/* Import Button */}
       <button
         onClick={handleImport}
-        disabled={disabled || isImporting || extensionState !== 'CONNECTED' || !url.trim()}
+        disabled={disabled || isImporting || extensionState === 'NOT_INSTALLED' || !url.trim()}
         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
       >
         {isImporting ? '가져오는 중...' : '슬라이드 가져오기'}

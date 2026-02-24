@@ -585,6 +585,51 @@
   });
 
   /**
+   * Crop image using DOM canvas (for service worker that doesn't have DOM)
+   */
+  async function cropImageInContentScript(fullPngDataUrl, slideRect, dpr) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          const sx = slideRect.x * dpr;
+          const sy = slideRect.y * dpr;
+          const sw = slideRect.width * dpr;
+          const sh = slideRect.height * dpr;
+          const dw = slideRect.width;
+          const dh = slideRect.height;
+
+          canvas.width = dw;
+          canvas.height = dh;
+
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('Failed to create blob from canvas'));
+              return;
+            }
+
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          }, 'image/png');
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = fullPngDataUrl;
+    });
+  }
+
+  /**
    * Listen for messages from service worker
    */
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -595,6 +640,24 @@
           console.error('[Content Script] Multi-slide export error:', err);
           sendResponse({ success: false, error: err.message });
         });
+      return true; // Keep channel open for async
+    }
+
+    // Handle crop request from service worker
+    if (request.type === 'IMAGEFIX_CROP_IMAGE') {
+      const { fullPngDataUrl, slideRect, dpr } = request;
+      console.log('[CS] Crop request received, slideRect:', slideRect);
+
+      cropImageInContentScript(fullPngDataUrl, slideRect, dpr)
+        .then((croppedDataUrl) => {
+          console.log('[CS] crop ok w/h=', slideRect.width, 'x', slideRect.height);
+          sendResponse({ success: true, croppedDataUrl });
+        })
+        .catch((err) => {
+          console.error('[CS] Crop failed:', err);
+          sendResponse({ success: false, error: err.message });
+        });
+
       return true; // Keep channel open for async
     }
   });

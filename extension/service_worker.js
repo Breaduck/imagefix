@@ -59,6 +59,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
+
+  // Open capture permission page
+  if (request.type === 'OPEN_CAPTURE_PERMISSION') {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('permission.html'),
+      active: true
+    });
+    sendResponse({ success: true });
+    return false;
+  }
 });
 
 /**
@@ -112,25 +122,23 @@ async function handleCaptureAndExport(data, tabId) {
       format: 'png',
     });
 
+    console.log('[SW] capture ok len=', dataUrl.substring(0, 30) + '...');
+
     // Step 3: Restore text
     await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.__notebookLMExtractor?.restoreTextStyles(),
     });
 
-    console.log('[Service Worker] Screenshot captured');
-
-    // Step 4: Crop to slide area
+    // Step 4: Crop to slide area (delegate to content script)
     const { slideX, slideY, slideW, slideH, dpr } = data.source;
 
-    const croppedDataUrl = await cropImage(dataUrl, {
-      sx: slideX * dpr,
-      sy: slideY * dpr,
-      sw: slideW * dpr,
-      sh: slideH * dpr,
-      dw: slideW,
-      dh: slideH,
-    });
+    const croppedDataUrl = await requestCropFromContentScript(tabId, dataUrl, {
+      x: slideX,
+      y: slideY,
+      width: slideW,
+      height: slideH,
+    }, dpr);
 
     console.log('[Service Worker] Image cropped');
 
@@ -162,28 +170,28 @@ async function handleCaptureAndExport(data, tabId) {
 }
 
 /**
- * Crop image from dataUrl
+ * Request crop from content script (no DOM in service worker)
  */
-function cropImage(dataUrl, { sx, sy, sw, sh, dw, dh }) {
+async function requestCropFromContentScript(tabId, fullPngDataUrl, slideRect, dpr) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-
-    img.onload = () => {
-      const canvas = new OffscreenCanvas(dw, dh);
-      const ctx = canvas.getContext('2d');
-
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
-
-      canvas.convertToBlob({ type: 'image/png' }).then((blob) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    };
-
-    img.onerror = reject;
-    img.src = dataUrl;
+    chrome.tabs.sendMessage(
+      tabId,
+      {
+        type: 'IMAGEFIX_CROP_IMAGE',
+        fullPngDataUrl,
+        slideRect,
+        dpr,
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (!response || !response.success) {
+          reject(new Error(response?.error || 'Crop failed'));
+        } else {
+          resolve(response.croppedDataUrl);
+        }
+      }
+    );
   });
 }
 
@@ -246,6 +254,49 @@ async function handleImportURL(request) {
     const { requestId, url, sourceTabId } = request;
 
     console.log('[Service Worker] Opening NotebookLM URL:', url);
+
+    // Check if we have capture permission
+    const hasPermission = await chrome.permissions.contains({
+      origins: ['<all_urls>']
+    });
+
+    console.log('[SW] contains(<all_urls>)=', hasPermission);
+
+    if (!hasPermission) {
+      console.log('[SW] Missing capture permission, sending error to webapp');
+
+      // Find webapp tab
+      let webappTabId = sourceTabId;
+      if (!webappTabId) {
+        const tabs = await chrome.tabs.query({
+          url: ['http://localhost:*/*', 'https://imagefix-dun.vercel.app/*']
+        });
+        if (tabs.length > 0) {
+          webappTabId = tabs[0].id;
+        }
+      }
+
+      // Send error to webapp
+      if (webappTabId) {
+        await chrome.scripting.executeScript({
+          target: { tabId: webappTabId },
+          func: (error) => {
+            window.postMessage(error, '*');
+          },
+          args: [{
+            type: 'IMAGEFIX_IMPORT_ERROR',
+            requestId: requestId,
+            code: 'CAPTURE_PERMISSION_REQUIRED',
+            message: '첫 1회 캡처 권한 허용이 필요합니다.',
+          }],
+        });
+      }
+
+      return {
+        success: false,
+        error: 'Permission required',
+      };
+    }
 
     // Open URL in new tab
     const tab = await chrome.tabs.create({
@@ -327,15 +378,10 @@ async function handleCaptureVisibleTab(request, tab) {
       format: 'png',
     });
 
-    // Crop to slide area
-    const croppedDataUrl = await cropImage(dataUrl, {
-      sx: slideRect.x * dpr,
-      sy: slideRect.y * dpr,
-      sw: slideRect.width * dpr,
-      sh: slideRect.height * dpr,
-      dw: slideRect.width,
-      dh: slideRect.height,
-    });
+    console.log('[SW] capture ok len=', dataUrl.substring(0, 30) + '...');
+
+    // Crop to slide area (delegate to content script)
+    const croppedDataUrl = await requestCropFromContentScript(tab.id, dataUrl, slideRect, dpr);
 
     return {
       success: true,
@@ -405,16 +451,54 @@ async function handleExportComplete(request) {
       return { success: false, error: 'Session not found' };
     }
 
-    // Send results to webapp
+    // Find webapp tab
     let webappTabId = sourceTabId;
 
     if (!webappTabId) {
-      const tabs = await chrome.tabs.query({ url: '*://localhost:*/*' });
+      const tabs = await chrome.tabs.query({
+        url: ['http://localhost:*/*', 'https://imagefix-dun.vercel.app/*']
+      });
       if (tabs.length > 0) {
         webappTabId = tabs[0].id;
       }
     }
 
+    // Check if we got any slides
+    if (slides.length === 0) {
+      console.error('[Service Worker] No slides captured');
+
+      if (webappTabId) {
+        await chrome.scripting.executeScript({
+          target: { tabId: webappTabId },
+          func: (error) => {
+            window.postMessage(error, '*');
+          },
+          args: [{
+            type: 'IMAGEFIX_IMPORT_ERROR',
+            requestId,
+            code: 'NO_SLIDES_CAPTURED',
+            message: '슬라이드를 캡처하지 못했습니다. NotebookLM 페이지가 올바른지 확인해주세요.',
+          }],
+        });
+
+        console.log('[SW] result slides=0 -> error sent');
+      }
+
+      // Close NotebookLM tab
+      if (session.notebookLMTabId) {
+        await chrome.tabs.remove(session.notebookLMTabId);
+      }
+
+      // Clean up session
+      importSessions.delete(requestId);
+
+      return {
+        success: false,
+        error: 'No slides captured',
+      };
+    }
+
+    // Send results to webapp
     if (webappTabId) {
       await chrome.scripting.executeScript({
         target: { tabId: webappTabId },
@@ -428,7 +512,7 @@ async function handleExportComplete(request) {
         }],
       });
 
-      console.log('[Service Worker] Results sent to webapp');
+      console.log('[SW] result slides=', slides.length);
     }
 
     // Close NotebookLM tab
