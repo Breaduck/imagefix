@@ -166,7 +166,8 @@ export default function Home() {
 
   const handleLinkImportStart = useCallback((requestId: string, url: string) => {
     console.log('[HomePage] Link import started:', { requestId, url });
-    setStage('processing');
+    // Don't unmount LinkImportZone - it needs to stay mounted to receive IMPORT_RESULT
+    // LinkImportZone has its own loading UI via isImporting state
   }, []);
 
   const handleLinkImportComplete = useCallback(async (slides: { pagePngDataUrl: string; layersJson: any }[]) => {
