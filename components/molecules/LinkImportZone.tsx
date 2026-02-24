@@ -13,6 +13,8 @@ export interface LinkImportZoneProps {
   disabled?: boolean;
 }
 
+type ExtensionState = 'CHECKING' | 'NOT_INSTALLED' | 'INSTALLED_BUT_NO_PERMISSION' | 'CONNECTED';
+
 export function LinkImportZone({
   onImportStart,
   onImportComplete,
@@ -21,41 +23,70 @@ export function LinkImportZone({
 }: LinkImportZoneProps) {
   const [url, setUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
-  const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
+  const [extensionState, setExtensionState] = useState<ExtensionState>('CHECKING');
+  const [extensionVersion, setExtensionVersion] = useState<string>('');
   const [progress, setProgress] = useState('');
 
-  // Check if extension is installed
+  // Check if extension is installed and has permissions
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
     const checkExtension = () => {
-      // Send ping
-      window.postMessage({ type: 'IMAGEFIX_PING', source: 'webapp' }, '*');
+      const requestId = `ping_${Date.now()}`;
 
-      // Wait for pong
+      // Send ping with requestId
+      window.postMessage({
+        type: 'IMAGEFIX_PING',
+        source: 'webapp',
+        requestId,
+      }, '*');
+
+      // Wait for pong (timeout after 1.5 seconds)
       timeoutId = setTimeout(() => {
-        setExtensionInstalled(false);
-      }, 1000);
+        console.log('[LinkImport] Extension detection timeout - not installed');
+        setExtensionState('NOT_INSTALLED');
+      }, 1500);
     };
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'IMAGEFIX_PONG') {
+      const data = event.data;
+
+      // Handle PONG (extension detected)
+      if (data?.type === 'IMAGEFIX_PONG' && data?.source === 'extension') {
         clearTimeout(timeoutId);
-        setExtensionInstalled(true);
-      } else if (event.data?.type === 'IMAGEFIX_IMPORT_PROGRESS') {
-        setProgress(event.data.message);
-      } else if (event.data?.type === 'IMAGEFIX_IMPORT_RESULT') {
-        // Multi-slide result
-        const slides = event.data.slides || [];
+
+        console.log('[LinkImport] Extension detected:', {
+          version: data.version,
+          hasNotebookLMPermission: data.hasNotebookLMPermission,
+        });
+
+        setExtensionVersion(data.version || 'unknown');
+
+        // Check permission status
+        if (data.hasNotebookLMPermission) {
+          setExtensionState('CONNECTED');
+        } else {
+          setExtensionState('INSTALLED_BUT_NO_PERMISSION');
+        }
+      }
+      // Handle import progress
+      else if (data?.type === 'IMAGEFIX_IMPORT_PROGRESS') {
+        setProgress(data.message);
+      }
+      // Handle import result
+      else if (data?.type === 'IMAGEFIX_IMPORT_RESULT') {
+        const slides = data.slides || [];
         console.log('[LinkImport] Received results:', slides.length, 'slides');
         setIsImporting(false);
         setProgress('');
         onImportComplete(slides);
-      } else if (event.data?.type === 'IMAGEFIX_IMPORT_ERROR') {
-        console.error('[LinkImport] Error:', event.data.message);
+      }
+      // Handle import error
+      else if (data?.type === 'IMAGEFIX_IMPORT_ERROR') {
+        console.error('[LinkImport] Error:', data.message);
         setIsImporting(false);
         setProgress('');
-        onImportError(event.data.message);
+        onImportError(data.message);
       }
     };
 
@@ -74,8 +105,12 @@ export function LinkImportZone({
       return;
     }
 
-    if (!extensionInstalled) {
-      alert('확장프로그램이 설치되지 않았습니다. 먼저 설치해주세요.');
+    if (extensionState !== 'CONNECTED') {
+      if (extensionState === 'NOT_INSTALLED') {
+        alert('확장프로그램이 설치되지 않았습니다. 먼저 설치해주세요.');
+      } else if (extensionState === 'INSTALLED_BUT_NO_PERMISSION') {
+        alert('확장프로그램에 NotebookLM 접근 권한이 없습니다. 확장프로그램 설정을 확인해주세요.');
+      }
       return;
     }
 
@@ -96,12 +131,12 @@ export function LinkImportZone({
       },
       '*'
     );
-  }, [url, extensionInstalled, onImportStart]);
+  }, [url, extensionState, onImportStart]);
 
   return (
     <div className="space-y-4">
-      {/* Extension Status Banner */}
-      {extensionInstalled === false && (
+      {/* Extension Status Banner - NOT_INSTALLED */}
+      {extensionState === 'NOT_INSTALLED' && (
         <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
           <div className="flex items-start space-x-4">
             <div className="flex-shrink-0">
@@ -169,13 +204,64 @@ export function LinkImportZone({
         </div>
       )}
 
-      {extensionInstalled === true && (
+      {/* Extension Status Banner - INSTALLED_BUT_NO_PERMISSION */}
+      {extensionState === 'INSTALLED_BUT_NO_PERMISSION' && (
+        <div className="p-6 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-2 border-yellow-300 dark:border-yellow-700 rounded-lg">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                권한 설정 필요
+              </h4>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                확장프로그램이 설치되었지만 NotebookLM 접근 권한이 없습니다.
+              </p>
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                  해결 방법:
+                </p>
+                <ol className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                  <li>1. chrome://extensions/ 열기</li>
+                  <li>2. ImageFix Link Import Companion 찾기</li>
+                  <li>3. "세부정보" 클릭</li>
+                  <li>4. "사이트 액세스" 섹션에서 notebooklm.google.com 권한 활성화</li>
+                  <li>5. 이 페이지 새로고침</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extension Status Banner - CONNECTED */}
+      {extensionState === 'CONNECTED' && (
         <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
           <div className="flex items-center space-x-2 text-green-700 dark:text-green-300">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="text-sm font-medium">ImageFix Link Import Companion 연결됨</span>
+            <span className="text-sm font-medium">
+              ImageFix Link Import Companion 연결됨 {extensionVersion && `(v${extensionVersion})`}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Extension Status Banner - CHECKING */}
+      {extensionState === 'CHECKING' && (
+        <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+            <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm font-medium">확장프로그램 확인 중...</span>
           </div>
         </div>
       )}
@@ -206,7 +292,7 @@ export function LinkImportZone({
       {/* Import Button */}
       <button
         onClick={handleImport}
-        disabled={disabled || isImporting || !extensionInstalled || !url.trim()}
+        disabled={disabled || isImporting || extensionState !== 'CONNECTED' || !url.trim()}
         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
       >
         {isImporting ? '가져오는 중...' : '슬라이드 가져오기'}

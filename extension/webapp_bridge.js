@@ -25,18 +25,29 @@
 
     // Handle PING (extension detection)
     if (message?.type === 'IMAGEFIX_PING' && message?.source === 'webapp') {
-      console.log('[Webapp Bridge] Received PING from webapp');
+      console.log('[Webapp Bridge] Received PING from webapp, requestId:', message.requestId);
 
-      // Send PONG back to webapp
-      window.postMessage(
-        {
-          type: 'IMAGEFIX_PONG',
-          source: 'extension',
-        },
-        '*'
-      );
+      // Query service worker for full status (version + permissions)
+      chrome.runtime.sendMessage({ type: 'GET_EXTENSION_STATUS' }, (response) => {
+        const status = response || { version: 'unknown', hasPermissions: false };
 
-      console.log('[Webapp Bridge] Sent PONG to webapp');
+        console.log('[Webapp Bridge] Extension status:', status);
+
+        // Send PONG with status back to webapp
+        window.postMessage(
+          {
+            type: 'IMAGEFIX_PONG',
+            source: 'extension',
+            requestId: message.requestId,
+            version: status.version,
+            hasNotebookLMPermission: status.hasNotebookLMPermission,
+            hasWebappPermission: true, // If this script runs, we have webapp permission
+          },
+          '*'
+        );
+
+        console.log('[Webapp Bridge] Sent PONG to webapp');
+      });
     }
 
     // Handle IMPORT_REQUEST (link import)
