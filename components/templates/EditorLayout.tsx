@@ -21,6 +21,11 @@ export interface EditorLayoutProps {
   textRegions: TextRegion[];
   onReset: () => void;
   onRerunOCR?: () => void;
+  // Multi-slide navigation (optional)
+  currentSlide?: number;
+  totalSlides?: number;
+  onPrevSlide?: () => void;
+  onNextSlide?: () => void;
 }
 
 export function EditorLayout({
@@ -30,6 +35,10 @@ export function EditorLayout({
   textRegions: initialTextRegions,
   onReset,
   onRerunOCR,
+  currentSlide,
+  totalSlides,
+  onPrevSlide,
+  onNextSlide,
 }: EditorLayoutProps) {
   const [textRegions, setTextRegions] = useState<TextRegion[]>(initialTextRegions);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
@@ -175,6 +184,33 @@ export function EditorLayout({
         onRerunOCR={onRerunOCR}
         disabled={!canvas}
       />
+
+      {/* Slide Navigation (if multi-slide) */}
+      {totalSlides && totalSlides > 1 && currentSlide !== undefined && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 px-4 py-3">
+          <div className="flex items-center justify-center space-x-4">
+            <button
+              onClick={onPrevSlide}
+              disabled={currentSlide === 0}
+              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              ← 이전 슬라이드
+            </button>
+
+            <div className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold">
+              {currentSlide + 1} / {totalSlides}
+            </div>
+
+            <button
+              onClick={onNextSlide}
+              disabled={currentSlide >= totalSlides - 1}
+              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              다음 슬라이드 →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
