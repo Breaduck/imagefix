@@ -3,7 +3,7 @@
  * Handles screenshot capture and file downloads
  */
 
-const BUILD_INFO = '2026-02-24T20:15Z_allurls-required';
+const BUILD_INFO = '2026-02-25T01:00Z_fix-result-routing';
 console.log('[Service Worker] Loaded - build', BUILD_INFO);
 
 // Store active import sessions
