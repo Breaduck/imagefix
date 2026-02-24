@@ -6,6 +6,12 @@ import { OCRResult } from '@/types/ocr.types';
 import { OCRProviderInterface, OCRProviderOptions } from './types';
 
 export class ClovaProvider implements OCRProviderInterface {
+  private apiKey?: string;
+
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey;
+  }
+
   async recognize(imageUrl: string, options?: OCRProviderOptions): Promise<OCRResult[]> {
     // Convert data URL to blob
     const response = await fetch(imageUrl);
@@ -19,9 +25,15 @@ export class ClovaProvider implements OCRProviderInterface {
       options.onProgress(0.1); // Upload started
     }
 
-    // Call Next.js API route
+    // Call Next.js API route with optional API key
+    const headers: HeadersInit = {};
+    if (this.apiKey) {
+      headers['X-CLOVA-API-KEY'] = this.apiKey;
+    }
+
     const apiResponse = await fetch('/api/ocr/clova', {
       method: 'POST',
+      headers,
       body: formData,
     });
 

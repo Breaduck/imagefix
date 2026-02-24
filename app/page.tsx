@@ -23,7 +23,7 @@ export default function Home() {
   const [ocrProvider, setOcrProvider] = useState<OCRProvider>('tesseract');
   const [clovaApiKey, setClovaApiKey] = useState('');
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
-  const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction(ocrProvider);
+  const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction(ocrProvider, clovaApiKey);
   const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, totalPages, currentPage, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
   const { isProcessing: isDOMProcessing, error: domError, result: domResult, importDOMFiles, clearResults: clearDOMResults } = useDOMImport();
 

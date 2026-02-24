@@ -24,14 +24,14 @@ export interface UseOCRReturn {
   cleanup: () => Promise<void>;
 }
 
-export function useOCR(provider: OCRProvider = 'tesseract'): UseOCRReturn {
+export function useOCR(provider: OCRProvider = 'tesseract', apiKey?: string): UseOCRReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [textRegions, setTextRegions] = useState<TextRegion[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const ocrProvider = createOCRProvider(provider);
+  const ocrProvider = createOCRProvider(provider, apiKey);
 
   /**
    * 이미지에서 텍스트 추출 및 처리

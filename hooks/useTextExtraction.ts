@@ -19,8 +19,8 @@ export interface UseTextExtractionReturn {
   clearResults: () => void;
 }
 
-export function useTextExtraction(provider: OCRProvider = 'tesseract'): UseTextExtractionReturn {
-  const { isProcessing, progress, error, textRegions, processImage, clearResults } = useOCR(provider);
+export function useTextExtraction(provider: OCRProvider = 'tesseract', apiKey?: string): UseTextExtractionReturn {
+  const { isProcessing, progress, error, textRegions, processImage, clearResults } = useOCR(provider, apiKey);
 
   /**
    * 이미지에서 텍스트 추출 + 스타일 분석

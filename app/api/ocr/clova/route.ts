@@ -26,14 +26,31 @@ interface ClovaResponse {
 export async function POST(request: NextRequest) {
   try {
     const endpoint = process.env.CLOVA_OCR_ENDPOINT;
-    const secret = process.env.CLOVA_OCR_SECRET;
 
-    if (!endpoint || !secret) {
-      console.error('[CLOVA] Missing environment variables');
+    // Check for API key in header first, fallback to environment variable
+    const userApiKey = request.headers.get('X-CLOVA-API-KEY');
+    const secret = userApiKey || process.env.CLOVA_OCR_SECRET;
+
+    if (!endpoint) {
+      console.error('[CLOVA] Missing CLOVA_OCR_ENDPOINT environment variable');
       return NextResponse.json(
-        { error: 'CLOVA OCR not configured. Set CLOVA_OCR_ENDPOINT and CLOVA_OCR_SECRET.' },
+        { error: 'CLOVA OCR endpoint not configured.' },
         { status: 500 }
       );
+    }
+
+    if (!secret) {
+      console.error('[CLOVA] Missing API key (neither provided nor in environment)');
+      return NextResponse.json(
+        { error: 'CLOVA API key required. Please enter your API key.' },
+        { status: 400 }
+      );
+    }
+
+    if (userApiKey) {
+      console.log('[CLOVA] Using user-provided API key');
+    } else {
+      console.log('[CLOVA] Using environment API key');
     }
 
     // Get uploaded image
