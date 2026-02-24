@@ -62,6 +62,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Open capture permission page
   if (request.type === 'OPEN_CAPTURE_PERMISSION') {
+    console.log('[SW] opening permission page');
     chrome.tabs.create({
       url: chrome.runtime.getURL('permission.html'),
       active: true

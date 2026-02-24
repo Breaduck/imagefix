@@ -117,6 +117,8 @@ export function LinkImportZone({
         // Special handling for permission errors
         if (data.code === 'CAPTURE_PERMISSION_REQUIRED' || data.code === 'NOTEBOOKLM_PERMISSION_REQUIRED') {
           setPermissionError(true);
+          addLog('UI_CAPTURE_PERMISSION_REQUIRED', { code: data.code, showCTA: true });
+          console.log('[UI] CAPTURE_PERMISSION_REQUIRED -> show CTA');
           // Also show error detail if available
           if (data.detail) {
             addLog('PERMISSION_ERROR_DETAIL', { detail: data.detail });
@@ -229,6 +231,7 @@ export function LinkImportZone({
   // Handle permission grant button
   const handleGrantPermission = useCallback(() => {
     addLog('PERMISSION_GRANT_REQUESTED', {});
+    console.log('[UI] OPEN_CAPTURE_PERMISSION clicked');
     window.postMessage({
       type: 'OPEN_CAPTURE_PERMISSION',
       source: 'webapp',
@@ -522,7 +525,7 @@ export function LinkImportZone({
 
       {/* Permission Error Banner */}
       {permissionError && (
-        <div className="p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-2 border-orange-300 dark:border-orange-700 rounded-lg">
+        <div className="sticky top-0 z-50 p-6 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-2 border-orange-300 dark:border-orange-700 rounded-lg shadow-lg mb-4">
           <div className="flex items-start space-x-4">
             <div className="flex-shrink-0">
               <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">

@@ -77,7 +77,7 @@
 
     // Handle OPEN_CAPTURE_PERMISSION request
     if (message?.type === 'OPEN_CAPTURE_PERMISSION' && message?.source === 'webapp') {
-      console.log('[Webapp Bridge] Opening permission page');
+      console.log('[Bridge] forwarding OPEN_CAPTURE_PERMISSION');
 
       chrome.runtime.sendMessage({
         type: 'OPEN_CAPTURE_PERMISSION'
