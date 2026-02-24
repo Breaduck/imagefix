@@ -15,9 +15,9 @@ grantBtn.addEventListener('click', async () => {
   grantBtn.textContent = '권한 요청 중...';
 
   try {
-    // Request <all_urls> permission
+    // Request capture permission (https + http)
     const granted = await chrome.permissions.request({
-      origins: ['<all_urls>']
+      origins: ['https://*/*', 'http://*/*']
     });
 
     console.log('[Permission] Request result:', granted);

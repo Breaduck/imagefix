@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ImageFix Link Import Companion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Automatically capture NotebookLM slides and send them to ImageFix webapp for editing. Just paste a link!",
   "author": "ImageFix Team",
   "permissions": [
@@ -15,7 +15,8 @@
     "https://imagefix-dun.vercel.app/*"
   ],
   "optional_host_permissions": [
-    "<all_urls>"
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
