@@ -86,14 +86,14 @@ export function LinkImportZone({
 
         setExtensionVersion(data.version || 'unknown');
 
-        // Check permission status
-        if (data.hasNotebookLMPermission) {
-          setExtensionState('CONNECTED');
-          addLog('STATE_CHANGE', { state: 'CONNECTED', reason: 'All permissions OK' });
-        } else {
-          setExtensionState('INSTALLED_BUT_NO_PERMISSION');
-          addLog('STATE_CHANGE', { state: 'INSTALLED_BUT_NO_PERMISSION', reason: 'Missing NotebookLM permission' });
-        }
+        // Extension is connected - don't block on permission estimation
+        // Permission will be tested during actual import attempt
+        setExtensionState('CONNECTED');
+        addLog('STATE_CHANGE', {
+          state: 'CONNECTED',
+          reason: 'Extension bridge connected',
+          notebooklmPermission: data.hasNotebookLMPermission ? 'granted' : 'unknown'
+        });
       }
       // Handle import progress
       else if (data?.type === 'IMAGEFIX_IMPORT_PROGRESS') {
@@ -114,9 +114,13 @@ export function LinkImportZone({
         setIsImporting(false);
         setProgress('');
 
-        // Special handling for permission error
-        if (data.code === 'CAPTURE_PERMISSION_REQUIRED') {
+        // Special handling for permission errors
+        if (data.code === 'CAPTURE_PERMISSION_REQUIRED' || data.code === 'NOTEBOOKLM_PERMISSION_REQUIRED') {
           setPermissionError(true);
+          // Also show error detail if available
+          if (data.detail) {
+            addLog('PERMISSION_ERROR_DETAIL', { detail: data.detail });
+          }
         } else {
           onImportError(data.message);
         }
@@ -158,15 +162,13 @@ export function LinkImportZone({
 
         setExtensionVersion(data.version || 'unknown');
 
-        if (data.hasNotebookLMPermission) {
-          setExtensionState('CONNECTED');
-          addLog('MANUAL_TEST_SUCCESS', { state: 'CONNECTED' });
-          alert('✅ 연결 성공! 확장프로그램이 정상 작동 중입니다.');
-        } else {
-          setExtensionState('INSTALLED_BUT_NO_PERMISSION');
-          addLog('MANUAL_TEST_PARTIAL', { state: 'INSTALLED_BUT_NO_PERMISSION' });
-          alert('⚠️ 확장프로그램은 설치되었지만 NotebookLM 권한이 필요합니다.');
-        }
+        // Extension connected - permission will be tested during import
+        setExtensionState('CONNECTED');
+        addLog('MANUAL_TEST_SUCCESS', {
+          state: 'CONNECTED',
+          notebooklmPermission: data.hasNotebookLMPermission ? 'granted' : 'unknown'
+        });
+        alert('✅ 연결 성공! 확장프로그램이 정상 작동 중입니다.\n\nNotebookLM 권한은 슬라이드 가져오기 시도 시 자동으로 확인됩니다.');
         setIsTesting(false);
       }
     };

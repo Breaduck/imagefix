@@ -80,16 +80,13 @@ async function handleGetExtensionStatus() {
     const manifest = chrome.runtime.getManifest();
     const version = manifest.version;
 
-    // Check if we have NotebookLM permission
-    const hasNotebookLMPermission = await chrome.permissions.contains({
-      origins: ['https://notebooklm.google.com/*']
-    });
-
-    console.log('[Service Worker] Extension status:', { version, hasNotebookLMPermission });
+    // NotebookLM permission will be tested during actual import attempt
+    // Don't use contains() estimation which can give false negatives
+    console.log('[Service Worker] Extension status:', { version, notebooklmAccess: 'unknown' });
 
     return {
       version,
-      hasNotebookLMPermission,
+      hasNotebookLMPermission: true, // Always report true to avoid UI blocking
     };
   } catch (error) {
     console.error('[Service Worker] Error getting extension status:', error);
@@ -320,6 +317,68 @@ async function handleImportURL(request) {
 
     // Ensure content script is loaded (should auto-inject via manifest, but double-check)
     await sleep(1000);
+
+    // Test NotebookLM permission by injecting a probe script
+    console.log('[SW] Testing NotebookLM access with probe injection...');
+    try {
+      const probeResult = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => ({ ok: true, href: location.href, title: document.title }),
+      });
+
+      if (probeResult && probeResult[0]?.result) {
+        console.log('[SW] notebooklm probe inject ok', {
+          href: probeResult[0].result.href?.substring(0, 50) + '...',
+        });
+      } else {
+        throw new Error('Probe returned no result');
+      }
+    } catch (probeErr) {
+      console.error('[SW] notebooklm probe inject fail', { message: probeErr.message });
+
+      // Find webapp tab
+      let webappTabId = sourceTabId;
+      if (!webappTabId) {
+        const tabs = await chrome.tabs.query({
+          url: ['http://localhost:*/*', 'https://imagefix-dun.vercel.app/*']
+        });
+        if (tabs.length > 0) {
+          webappTabId = tabs[0].id;
+        }
+      }
+
+      // Send error to webapp
+      if (webappTabId) {
+        await chrome.scripting.executeScript({
+          target: { tabId: webappTabId },
+          func: (error) => {
+            window.postMessage(error, '*');
+          },
+          args: [{
+            type: 'IMAGEFIX_IMPORT_ERROR',
+            requestId: requestId,
+            code: 'NOTEBOOKLM_PERMISSION_REQUIRED',
+            message: 'NotebookLM 사이트 액세스를 허용해야 합니다.',
+            detail: probeErr.message,
+          }],
+        });
+      }
+
+      // Close NotebookLM tab
+      try {
+        await chrome.tabs.remove(tab.id);
+      } catch (closeErr) {
+        console.warn('[SW] Failed to close NotebookLM tab:', closeErr.message);
+      }
+
+      // Clean up session
+      importSessions.delete(requestId);
+
+      return {
+        success: false,
+        error: 'NotebookLM permission required',
+      };
+    }
 
     // Trigger multi-slide export
     const response = await chrome.tabs.sendMessage(tab.id, {
