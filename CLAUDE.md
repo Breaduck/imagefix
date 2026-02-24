@@ -19,6 +19,7 @@ After completing a task, ALWAYS do the following in order:
 3) Push
 - Always push to: `origin main`
 - Repo: https://github.com/Breaduck/imagefix
+- 업데이트되는 모든 내용을 깃에 자동 PUSH해해
 
 #### Hard rules
 - NEVER push if `npm run build` fails.
