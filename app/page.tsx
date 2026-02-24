@@ -342,7 +342,7 @@ export default function Home() {
   };
 
   return (
-    <main className="h-screen overflow-hidden" key={stage}>
+    <main className={stage === 'editing' ? 'h-screen overflow-hidden' : 'min-h-screen'} key={stage}>
       {/* Upload Stage */}
       {stage === 'upload' && (
         <div className="min-h-screen p-8">
