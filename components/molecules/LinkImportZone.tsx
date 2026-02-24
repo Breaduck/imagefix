@@ -33,6 +33,8 @@ export function LinkImportZone({
   const [extensionVersion, setExtensionVersion] = useState<string>('');
   const [progress, setProgress] = useState('');
   const [diagnosticLogs, setDiagnosticLogs] = useState<DiagnosticLog[]>([]);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   // Add diagnostic log
   const addLog = useCallback((event: string, details: any = {}) => {
@@ -123,6 +125,63 @@ export function LinkImportZone({
     };
   }, [onImportComplete, onImportError, addLog]);
 
+  // Auto-open setup modal when NOT_INSTALLED detected
+  useEffect(() => {
+    if (extensionState === 'NOT_INSTALLED' && !showSetupModal) {
+      setShowSetupModal(true);
+    }
+  }, [extensionState, showSetupModal]);
+
+  // Manual connection test
+  const handleTestConnection = useCallback(() => {
+    setIsTesting(true);
+    setExtensionState('CHECKING');
+
+    const requestId = `test_${Date.now()}`;
+    addLog('MANUAL_TEST_STARTED', { requestId });
+
+    let timeoutId: NodeJS.Timeout;
+
+    const handleTestMessage = (event: MessageEvent) => {
+      const data = event.data;
+
+      if (data?.type === 'IMAGEFIX_PONG' && data?.source === 'extension') {
+        clearTimeout(timeoutId);
+        window.removeEventListener('message', handleTestMessage);
+
+        setExtensionVersion(data.version || 'unknown');
+
+        if (data.hasNotebookLMPermission) {
+          setExtensionState('CONNECTED');
+          addLog('MANUAL_TEST_SUCCESS', { state: 'CONNECTED' });
+          alert('✅ 연결 성공! 확장프로그램이 정상 작동 중입니다.');
+        } else {
+          setExtensionState('INSTALLED_BUT_NO_PERMISSION');
+          addLog('MANUAL_TEST_PARTIAL', { state: 'INSTALLED_BUT_NO_PERMISSION' });
+          alert('⚠️ 확장프로그램은 설치되었지만 NotebookLM 권한이 필요합니다.');
+        }
+        setIsTesting(false);
+      }
+    };
+
+    window.addEventListener('message', handleTestMessage);
+
+    window.postMessage({
+      type: 'IMAGEFIX_PING',
+      source: 'webapp',
+      requestId,
+    }, '*');
+
+    timeoutId = setTimeout(() => {
+      window.removeEventListener('message', handleTestMessage);
+      setExtensionState('NOT_INSTALLED');
+      addLog('MANUAL_TEST_TIMEOUT', { reason: 'No PONG received' });
+      setShowSetupModal(true);
+      setIsTesting(false);
+      alert('❌ 확장프로그램이 설치되지 않았거나 연결할 수 없습니다. 설치 가이드를 확인하세요.');
+    }, 1000);
+  }, [addLog]);
+
   const handleImport = useCallback(() => {
     if (!url.trim()) {
       addLog('IMPORT_FAILED', { reason: 'Empty URL' });
@@ -184,6 +243,34 @@ export function LinkImportZone({
 
   return (
     <div className="space-y-4">
+      {/* One-Click Connection Test Button */}
+      <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="flex items-center space-x-2">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            확장프로그램 상태:
+          </span>
+          {extensionState === 'CHECKING' && (
+            <span className="text-sm text-gray-500 dark:text-gray-400">확인 중...</span>
+          )}
+          {extensionState === 'NOT_INSTALLED' && (
+            <span className="text-sm text-red-600 dark:text-red-400 font-semibold">미설치</span>
+          )}
+          {extensionState === 'INSTALLED_BUT_NO_PERMISSION' && (
+            <span className="text-sm text-yellow-600 dark:text-yellow-400 font-semibold">권한 필요</span>
+          )}
+          {extensionState === 'CONNECTED' && (
+            <span className="text-sm text-green-600 dark:text-green-400 font-semibold">연결됨</span>
+          )}
+        </div>
+        <button
+          onClick={handleTestConnection}
+          disabled={isTesting}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+        >
+          {isTesting ? '테스트 중...' : '🔍 연결 테스트'}
+        </button>
+      </div>
+
       {/* Extension Status Banner - NOT_INSTALLED */}
       {extensionState === 'NOT_INSTALLED' && (
         <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
@@ -273,23 +360,110 @@ export function LinkImportZone({
             </div>
             <div className="flex-1">
               <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-                권한 설정 필요
+                ⚠️ 권한 설정 필요
               </h4>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                확장프로그램이 설치되었지만 NotebookLM 접근 권한이 없습니다.
+                확장프로그램은 설치되었지만 NotebookLM 접근 권한이 없어 슬라이드를 캡처할 수 없습니다.
               </p>
-              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                  해결 방법:
+
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg mb-4">
+                <p className="text-sm font-semibold text-red-600 dark:text-red-400 mb-3">
+                  ⚠️ 권한은 자동으로 수정할 수 없습니다. 아래 단계를 직접 따라 해주세요:
                 </p>
-                <ol className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
-                  <li>1. chrome://extensions/ 열기</li>
-                  <li>2. ImageFix Link Import Companion 찾기</li>
-                  <li>3. "세부정보" 클릭</li>
-                  <li>4. "사이트 액세스" 섹션에서 notebooklm.google.com 권한 활성화</li>
-                  <li>5. 이 페이지 새로고침</li>
-                </ol>
+
+                <div className="space-y-3">
+                  {/* Step 1 - Clickable */}
+                  <div className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                    <div className="flex-shrink-0 w-6 h-6 bg-yellow-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      1
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Chrome 확장 페이지 열기
+                      </p>
+                      <a
+                        href="chrome://extensions/"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.open('chrome://extensions/', '_blank');
+                        }}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block"
+                      >
+                        👉 클릭: chrome://extensions/ 열기
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="flex-shrink-0 w-6 h-6 bg-yellow-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      2
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        "ImageFix Link Import Companion" 찾기
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        목록에서 확장 프로그램을 찾으세요
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="flex-shrink-0 w-6 h-6 bg-yellow-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      3
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        "세부정보" 버튼 클릭
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 4 - Critical */}
+                  <div className="flex items-start space-x-3 p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded-lg">
+                    <div className="flex-shrink-0 w-6 h-6 bg-yellow-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      4
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        "사이트 액세스" 섹션 찾기
+                      </p>
+                      <p className="text-xs text-gray-700 dark:text-gray-300 mt-1">
+                        다음 권한을 허용으로 변경:
+                      </p>
+                      <ul className="text-xs text-gray-700 dark:text-gray-300 mt-2 ml-2 space-y-1">
+                        <li>✓ <code className="px-1 bg-gray-200 dark:bg-gray-600 rounded">notebooklm.google.com</code></li>
+                        <li>✓ <code className="px-1 bg-gray-200 dark:bg-gray-600 rounded">imagefix-dun.vercel.app</code></li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Step 5 */}
+                  <div className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="flex-shrink-0 w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      5
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        이 페이지 새로고침
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs">Ctrl + Shift + R</kbd> (하드 리프레시)
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {/* Test Connection Button */}
+              <button
+                onClick={handleTestConnection}
+                className="w-full px-4 py-3 bg-yellow-600 text-white font-semibold rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                ✅ 권한 설정 완료 - 연결 테스트하기
+              </button>
 
               {/* Diagnostic button */}
               <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -397,6 +571,142 @@ export function LinkImportZone({
           <li>자동으로 모든 슬라이드가 캡처되어 로드됩니다</li>
         </ol>
       </div>
+
+      {/* Setup Guide Modal */}
+      {showSetupModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                🚀 확장프로그램 설치 가이드
+              </h2>
+              <button
+                onClick={() => setShowSetupModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Option 1: Web Store (if available) */}
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                  방법 1: Chrome 웹 스토어에서 설치 (권장)
+                </h3>
+                <a
+                  href="https://chrome.google.com/webstore/detail/EXTENSION_ID_PLACEHOLDER"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  웹 스토어에서 설치하기
+                </a>
+                <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+                  클릭 한 번으로 자동 설치되며, 모든 권한이 자동으로 설정됩니다.
+                </p>
+              </div>
+
+              {/* Option 2: Load Unpacked */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                  방법 2: 개발자 모드로 설치 (고급)
+                </h3>
+
+                <div className="space-y-4">
+                  {/* Step 1 */}
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                      1
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">Chrome 확장 페이지 열기</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        주소창에 <code className="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded">chrome://extensions/</code> 입력
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                      2
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">개발자 모드 활성화</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        우측 상단 "개발자 모드" 토글을 켭니다
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                      3
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">확장 프로그램 로드</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        "압축 해제된 확장 프로그램을 로드합니다" 클릭 → <code className="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded">extension</code> 폴더 선택
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 4 - Critical */}
+                  <div className="flex items-start space-x-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+                    <div className="flex-shrink-0 w-8 h-8 bg-yellow-600 text-white rounded-full flex items-center justify-center font-bold">
+                      4
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">⚠️ 권한 설정 (중요!)</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                        확장 프로그램 "세부정보" 클릭 → "사이트 액세스" 섹션에서:
+                      </p>
+                      <ul className="text-sm text-gray-700 dark:text-gray-300 mt-2 ml-4 space-y-1">
+                        <li>✓ <code className="px-1 bg-gray-200 dark:bg-gray-600 rounded">notebooklm.google.com</code> 허용</li>
+                        <li>✓ <code className="px-1 bg-gray-200 dark:bg-gray-600 rounded">imagefix-dun.vercel.app</code> 허용</li>
+                      </ul>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-2">
+                        💡 이 단계를 건너뛰면 확장이 작동하지 않습니다!
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 5 */}
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold">
+                      5
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">페이지 새로고침</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        이 페이지를 <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded">Ctrl + Shift + R</kbd> (하드 리프레시)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Test Connection Button */}
+              <div className="flex justify-center">
+                <button
+                  onClick={() => {
+                    setShowSetupModal(false);
+                    handleTestConnection();
+                  }}
+                  className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md"
+                >
+                  ✅ 설치 완료 - 연결 테스트하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
