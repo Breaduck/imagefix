@@ -21,6 +21,7 @@ type ImportMode = 'ocr' | 'dom' | 'link';
 export default function Home() {
   const [importMode, setImportMode] = useState<ImportMode>('ocr');
   const [ocrProvider, setOcrProvider] = useState<OCRProvider>('tesseract');
+  const [clovaApiKey, setClovaApiKey] = useState('');
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
   const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction(ocrProvider);
   const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, totalPages, currentPage, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
@@ -432,35 +433,54 @@ export default function Home() {
             {importMode === 'ocr' && (
               <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 <h3 className="font-semibold mb-3">OCR 품질 선택</h3>
-                <div className="flex gap-4">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      name="ocrProvider"
-                      value="tesseract"
-                      checked={ocrProvider === 'tesseract'}
-                      onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
-                      className="mr-2"
-                    />
-                    <div>
-                      <span className="font-medium">기본 OCR (Tesseract)</span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">클라이언트 측 처리, 무료, 빠름</p>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ocrProvider"
+                        value="tesseract"
+                        checked={ocrProvider === 'tesseract'}
+                        onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                        className="mr-2"
+                      />
+                      <div>
+                        <span className="font-medium">기본 OCR (Tesseract)</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">클라이언트 측 처리, 무료, 빠름</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ocrProvider"
+                        value="clova"
+                        checked={ocrProvider === 'clova'}
+                        onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                        className="mr-2"
+                      />
+                      <div>
+                        <span className="font-medium">고품질 OCR (CLOVA)</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">서버 측 처리, 높은 정확도, API 키 필요</p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* CLOVA API Key Input */}
+                  {ocrProvider === 'clova' && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <label className="block text-sm font-medium mb-2">CLOVA OCR API Key</label>
+                      <input
+                        type="password"
+                        value={clovaApiKey}
+                        onChange={(e) => setClovaApiKey(e.target.value)}
+                        placeholder="CLOVA API 키를 입력하세요"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        CLOVA OCR API 키는 NAVER Cloud Platform에서 발급받을 수 있습니다.
+                      </p>
                     </div>
-                  </label>
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      name="ocrProvider"
-                      value="clova"
-                      checked={ocrProvider === 'clova'}
-                      onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
-                      className="mr-2"
-                    />
-                    <div>
-                      <span className="font-medium">고품질 OCR (CLOVA)</span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">서버 측 처리, 높은 정확도, API 키 필요</p>
-                    </div>
-                  </label>
+                  )}
                 </div>
               </div>
             )}
