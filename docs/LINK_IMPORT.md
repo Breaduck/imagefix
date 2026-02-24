@@ -44,8 +44,10 @@
 ### 전체 흐름
 
 ```
-웹앱 (localhost:3000)
+웹앱 (https://imagefix-dun.vercel.app)
   ↓ (1) postMessage: IMPORT_REQUEST
+Webapp Bridge (content script on webapp)
+  ↓ (2) chrome.runtime.sendMessage
 Chrome Extension (Service Worker)
   ↓ (2) chrome.tabs.create(notebooklm URL)
 새 탭: NotebookLM (자동 열림)
@@ -67,7 +69,7 @@ Service Worker
 
 #### 1. 웹앱 → 확장프로그램 통신
 
-**webapp:**
+**webapp (https://imagefix-dun.vercel.app):**
 ```javascript
 window.postMessage({
   type: 'IMAGEFIX_IMPORT_REQUEST',
@@ -77,7 +79,7 @@ window.postMessage({
 }, '*');
 ```
 
-**extension content_script:**
+**webapp_bridge.js (content script injected into webapp):**
 ```javascript
 window.addEventListener('message', (event) => {
   if (event.data.type === 'IMAGEFIX_IMPORT_REQUEST') {

@@ -23,6 +23,14 @@
       "matches": ["https://notebooklm.google.com/*"],
       "js": ["content_script.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://imagefix-dun.vercel.app/*",
+        "http://localhost:3000/*"
+      ],
+      "js": ["webapp_bridge.js"],
+      "run_at": "document_start"
     }
   ],
   "action": {

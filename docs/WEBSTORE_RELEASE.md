@@ -227,9 +227,16 @@ After approval, get the extension ID (e.g., `abcdefghijklmnopqrstuvwxyz123456`).
 
 Update webapp:
 ```typescript
-// components/molecules/LinkImportZone.tsx
-const EXTENSION_STORE_URL = 'https://chrome.google.com/webstore/detail/abcdefghijklmnopqrstuvwxyz123456';
+// lib/constants.ts
+export const APP_CONFIG = {
+  EXTENSION_WEBSTORE_URL: 'https://chrome.google.com/webstore/detail/abcdefghijklmnopqrstuvwxyz123456',
+  EXTENSION_WEBSTORE_ID: 'abcdefghijklmnopqrstuvwxyz123456',
+  WEBAPP_PROD: 'https://imagefix-dun.vercel.app',
+  // ...
+};
 ```
+
+Then update `LinkImportZone.tsx` to use this constant.
 
 ### 6.2 Monitor & Update
 

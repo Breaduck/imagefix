@@ -129,7 +129,7 @@ export function LinkImportZone({
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                Chrome 웹 스토어에서 설치하기
+                ImageFix Link Import Companion 설치하기
               </a>
 
               {/* 3-Step Guide */}
@@ -175,7 +175,7 @@ export function LinkImportZone({
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="text-sm font-medium">확장프로그램 연결됨</span>
+            <span className="text-sm font-medium">ImageFix Link Import Companion 연결됨</span>
           </div>
         </div>
       )}
