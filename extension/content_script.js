@@ -398,11 +398,215 @@
     window.__notebookLM_originalStyles = null;
   }
 
+  /**
+   * Detect slide navigation controls and total slide count
+   */
+  function detectSlideInfo() {
+    // Try to find slide navigation elements
+    // Common patterns: "Slide 1 of 10", navigation buttons, etc.
+
+    const textContent = document.body.innerText;
+    const match = textContent.match(/Slide\s+(\d+)\s+of\s+(\d+)/i) ||
+                  textContent.match(/(\d+)\s*\/\s*(\d+)/);
+
+    if (match) {
+      return {
+        currentSlide: parseInt(match[1]),
+        totalSlides: parseInt(match[2]),
+      };
+    }
+
+    // Fallback: try to count slide thumbnails in sidebar
+    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="slide-preview"]');
+    if (thumbnails.length > 0) {
+      return {
+        currentSlide: 1, // Assume first slide
+        totalSlides: thumbnails.length,
+      };
+    }
+
+    return {
+      currentSlide: 1,
+      totalSlides: 1, // Assume single slide if can't detect
+    };
+  }
+
+  /**
+   * Navigate to next slide
+   */
+  function navigateToNextSlide() {
+    // Try common keyboard shortcuts
+    const nextButtons = [
+      document.querySelector('[aria-label*="next" i], [aria-label*="다음" i]'),
+      document.querySelector('button[class*="next"]'),
+      ...Array.from(document.querySelectorAll('button, [role="button"]')).filter(
+        (el) => el.innerText?.toLowerCase().includes('next') || el.innerText?.includes('다음')
+      ),
+    ].filter(Boolean);
+
+    if (nextButtons[0]) {
+      nextButtons[0].click();
+      return true;
+    }
+
+    // Fallback: keyboard shortcut (arrow right)
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      code: 'ArrowRight',
+      bubbles: true,
+    });
+    document.dispatchEvent(event);
+    return true;
+  }
+
+  /**
+   * Listen for messages from webapp via window.postMessage
+   */
+  window.addEventListener('message', (event) => {
+    // Only accept messages from same origin or extension
+    if (event.data?.type === 'IMAGEFIX_PING' && event.data?.source === 'webapp') {
+      console.log('[Content Script] Received PING from webapp');
+      window.postMessage({ type: 'IMAGEFIX_PONG', source: 'extension' }, '*');
+    }
+
+    if (event.data?.type === 'IMAGEFIX_IMPORT_REQUEST' && event.data?.source === 'webapp') {
+      console.log('[Content Script] Received import request from webapp:', event.data);
+
+      // Forward to service worker
+      chrome.runtime.sendMessage({
+        type: 'IMPORT_URL',
+        requestId: event.data.requestId,
+        url: event.data.url,
+        sourceTabId: chrome.devtools?.inspectedWindow?.tabId, // May not be available
+      });
+    }
+  });
+
+  /**
+   * Listen for messages from service worker
+   */
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'RUN_MULTI_SLIDE_EXPORT') {
+      handleMultiSlideExport(request.requestId, request.sourceTabId)
+        .then((result) => sendResponse(result))
+        .catch((err) => {
+          console.error('[Content Script] Multi-slide export error:', err);
+          sendResponse({ success: false, error: err.message });
+        });
+      return true; // Keep channel open for async
+    }
+  });
+
+  /**
+   * Handle multi-slide export (sequential)
+   */
+  async function handleMultiSlideExport(requestId, sourceTabId) {
+    try {
+      console.log('[Content Script] Starting multi-slide export');
+
+      // Detect slide info
+      const slideInfo = detectSlideInfo();
+      console.log('[Content Script] Detected:', slideInfo);
+
+      const slides = [];
+
+      for (let i = 0; i < slideInfo.totalSlides; i++) {
+        console.log(`[Content Script] Exporting slide ${i + 1}/${slideInfo.totalSlides}`);
+
+        // Send progress
+        chrome.runtime.sendMessage({
+          type: 'EXPORT_PROGRESS',
+          requestId,
+          sourceTabId,
+          message: `슬라이드 ${i + 1}/${slideInfo.totalSlides} 캡처 중...`,
+        });
+
+        // Wait for slide to settle
+        await sleep(500);
+
+        // Extract current slide
+        const extractionResult = extract();
+        if (!extractionResult.success) {
+          console.warn('[Content Script] Extraction failed:', extractionResult.error);
+          continue;
+        }
+
+        // Hide text
+        const elements = extractionResult.elements;
+        hideTextForScreenshot(elements);
+
+        // Wait for render
+        await sleep(300);
+
+        // Request screenshot from service worker
+        const captureResult = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              type: 'CAPTURE_VISIBLE_TAB',
+              requestId,
+              slideRect: extractionResult.slideRect,
+              dpr: extractionResult.dpr,
+            },
+            resolve
+          );
+        });
+
+        // Restore text
+        restoreTextStyles();
+
+        if (captureResult.success) {
+          slides.push({
+            slideNumber: i + 1,
+            pagePngDataUrl: captureResult.dataUrl,
+            layersJson: {
+              version: 1,
+              source: extractionResult.source,
+              layers: extractionResult.layers,
+            },
+          });
+        }
+
+        // Navigate to next slide (if not last)
+        if (i < slideInfo.totalSlides - 1) {
+          navigateToNextSlide();
+          await sleep(800); // Wait for navigation animation
+        }
+      }
+
+      console.log(`[Content Script] Export complete: ${slides.length} slides`);
+
+      // Send results back to webapp via service worker
+      chrome.runtime.sendMessage({
+        type: 'EXPORT_COMPLETE',
+        requestId,
+        sourceTabId,
+        slides,
+      });
+
+      return {
+        success: true,
+        slideCount: slides.length,
+      };
+    } catch (err) {
+      console.error('[Content Script] Multi-slide export error:', err);
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   // Expose API
   window.__notebookLMExtractor = {
     extract,
     hideTextForScreenshot,
     restoreTextStyles,
+    detectSlideInfo,
+    navigateToNextSlide,
   };
 
   console.log('[NotebookLM Extractor] Ready');

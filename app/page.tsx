@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { DropZone } from '@/components/molecules/DropZone';
 import { DOMImportZone } from '@/components/molecules/DOMImportZone';
+import { LinkImportZone } from '@/components/molecules/LinkImportZone';
 import { LoadingSpinner } from '@/components/atoms/LoadingSpinner';
 import { EditorLayout } from '@/components/templates/EditorLayout';
 import { PDFEditorLayout } from '@/components/templates/PDFEditorLayout';
@@ -15,7 +16,7 @@ import { isTextLayerUsable, renderPDFPage, loadPDF } from '@/lib/pdf/pdf-text-ex
 import { OCRProvider } from '@/lib/ocr/providers';
 
 type FileType = 'image' | 'pdf' | 'dom';
-type ImportMode = 'ocr' | 'dom';
+type ImportMode = 'ocr' | 'dom' | 'link';
 
 export default function Home() {
   const [importMode, setImportMode] = useState<ImportMode>('ocr');
@@ -138,7 +139,7 @@ export default function Home() {
     }
   };
 
-  const handleDOMFilesSelect = async (pngFile: File, jsonFile: File) => {
+  const handleDOMFilesSelect = useCallback(async (pngFile: File, jsonFile: File) => {
     console.log('[HomePage] DOM files selected:', pngFile.name, jsonFile.name);
 
     try {
@@ -157,7 +158,59 @@ export default function Home() {
       alert('DOM 파일 처리 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
       setStage('upload');
     }
-  };
+  }, [importDOMFiles]);
+
+  const handleLinkImportStart = useCallback((requestId: string, url: string) => {
+    console.log('[HomePage] Link import started:', { requestId, url });
+    setStage('processing');
+  }, []);
+
+  const handleLinkImportComplete = useCallback(async (slides: { pagePngDataUrl: string; layersJson: any }[]) => {
+    console.log('[HomePage] Link import complete:', slides.length, 'slides');
+
+    if (slides.length === 0) {
+      alert('슬라이드를 가져올 수 없습니다.');
+      setStage('upload');
+      return;
+    }
+
+    try {
+      // For now, load the first slide
+      // TODO: support multi-slide editing
+      const firstSlide = slides[0];
+
+      // Convert data URL to File for importDOMFiles
+      const pngBlob = await fetch(firstSlide.pagePngDataUrl).then(r => r.blob());
+      const pngFile = new File([pngBlob], 'slide.png', { type: 'image/png' });
+
+      const jsonBlob = new Blob([JSON.stringify(firstSlide.layersJson)], { type: 'application/json' });
+      const jsonFile = new File([jsonBlob], 'layers.json', { type: 'application/json' });
+
+      const result = await importDOMFiles(pngFile, jsonFile);
+      console.log('[HomePage] First slide loaded:', {
+        imageSize: `${result.imageWidth}x${result.imageHeight}`,
+        textRegions: result.textRegions.length,
+      });
+
+      setFileType('dom');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+
+      if (slides.length > 1) {
+        alert(`${slides.length}개의 슬라이드를 가져왔습니다. 현재는 첫 번째 슬라이드만 표시됩니다. (다중 슬라이드 편집은 추후 지원 예정)`);
+      }
+    } catch (err) {
+      console.error('[HomePage] Link import rendering error:', err);
+      alert('슬라이드 렌더링 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
+      setStage('upload');
+    }
+  }, [importDOMFiles]);
+
+  const handleLinkImportError = useCallback((error: string) => {
+    console.error('[HomePage] Link import error:', error);
+    alert('슬라이드 가져오기 실패: ' + error);
+    setStage('upload');
+  }, []);
 
   const handleReset = () => {
     clearImage();
@@ -239,33 +292,47 @@ export default function Home() {
             {/* Import Mode Selection */}
             <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
               <h3 className="font-semibold mb-3">Import Method</h3>
-              <div className="flex gap-4">
-                <label className="flex items-center cursor-pointer">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="flex items-start cursor-pointer p-3 border-2 rounded-lg transition-colors hover:border-blue-300 dark:hover:border-blue-600" style={{ borderColor: importMode === 'link' ? '#3b82f6' : 'transparent' }}>
                   <input
                     type="radio"
                     name="importMode"
-                    value="ocr"
-                    checked={importMode === 'ocr'}
+                    value="link"
+                    checked={importMode === 'link'}
                     onChange={(e) => setImportMode(e.target.value as ImportMode)}
-                    className="mr-2"
+                    className="mr-2 mt-1"
                   />
                   <div>
-                    <span className="font-medium">OCR Import (PDF/Image)</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Upload PDF or image, extract with OCR</p>
+                    <span className="font-medium">🔗 Link Import</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Paste URL, auto-capture all slides</p>
                   </div>
                 </label>
-                <label className="flex items-center cursor-pointer">
+                <label className="flex items-start cursor-pointer p-3 border-2 rounded-lg transition-colors hover:border-blue-300 dark:hover:border-blue-600" style={{ borderColor: importMode === 'dom' ? '#3b82f6' : 'transparent' }}>
                   <input
                     type="radio"
                     name="importMode"
                     value="dom"
                     checked={importMode === 'dom'}
                     onChange={(e) => setImportMode(e.target.value as ImportMode)}
-                    className="mr-2"
+                    className="mr-2 mt-1"
                   />
                   <div>
-                    <span className="font-medium">DOM Import (PNG + JSON)</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">From NotebookLM extension, 100% accurate</p>
+                    <span className="font-medium">📁 File Import</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Upload PNG + JSON files</p>
+                  </div>
+                </label>
+                <label className="flex items-start cursor-pointer p-3 border-2 rounded-lg transition-colors hover:border-blue-300 dark:hover:border-blue-600" style={{ borderColor: importMode === 'ocr' ? '#3b82f6' : 'transparent' }}>
+                  <input
+                    type="radio"
+                    name="importMode"
+                    value="ocr"
+                    checked={importMode === 'ocr'}
+                    onChange={(e) => setImportMode(e.target.value as ImportMode)}
+                    className="mr-2 mt-1"
+                  />
+                  <div>
+                    <span className="font-medium">🔍 OCR Import</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">PDF/Image with OCR</p>
                   </div>
                 </label>
               </div>
@@ -273,7 +340,16 @@ export default function Home() {
 
             {/* Upload Area */}
             <div className="mb-8">
-              {importMode === 'ocr' ? (
+              {importMode === 'link' ? (
+                <LinkImportZone
+                  onImportStart={handleLinkImportStart}
+                  onImportComplete={handleLinkImportComplete}
+                  onImportError={handleLinkImportError}
+                  disabled={false}
+                />
+              ) : importMode === 'dom' ? (
+                <DOMImportZone onFilesSelect={handleDOMFilesSelect} disabled={isDOMProcessing} />
+              ) : (
                 <>
                   <DropZone onFileSelect={handleFileSelect} disabled={isUploading} />
                   {isUploading && (
@@ -282,8 +358,6 @@ export default function Home() {
                     </div>
                   )}
                 </>
-              ) : (
-                <DOMImportZone onFilesSelect={handleDOMFilesSelect} disabled={isDOMProcessing} />
               )}
             </div>
 
@@ -327,21 +401,29 @@ export default function Home() {
             {/* Instructions */}
             <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">사용 방법</h3>
-              {importMode === 'ocr' ? (
+              {importMode === 'link' ? (
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <li><strong>PDF 업로드</strong>: NotebookLM PDF를 업로드하면 텍스트 레이어에서 직접 추출 (폰트 정보 포함)</li>
-                  <li><strong>이미지 업로드</strong>: PDF 스크린샷이나 이미지는 OCR로 텍스트 추출 (한글 + 영문)</li>
-                  <li>캔버스에서 텍스트를 직접 클릭하고 편집할 수 있습니다.</li>
-                  <li>폰트 크기, 색상, 회전 각도를 조정할 수 있습니다.</li>
-                  <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
+                  <li><strong>확장프로그램 설치</strong>: Chrome에서 /extension 폴더를 로드 (개발자 모드)</li>
+                  <li><strong>URL 복사</strong>: NotebookLM 프레젠테이션 URL 복사</li>
+                  <li><strong>붙여넣기</strong>: 위 입력칸에 URL 붙여넣고 "슬라이드 가져오기" 클릭</li>
+                  <li><strong>자동 캡처</strong>: 모든 슬라이드가 자동으로 캡처되어 캔버스에 로드됩니다</li>
+                  <li><strong>편집 & 내보내기</strong>: 텍스트 편집 후 PNG/JPG로 다운로드</li>
                 </ol>
-              ) : (
+              ) : importMode === 'dom' ? (
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <li><strong>Chrome Extension</strong>: Install the NotebookLM extension from /extension folder</li>
                   <li><strong>Export Slide</strong>: Open NotebookLM, click extension, export current slide as PNG + JSON</li>
                   <li><strong>Upload Files</strong>: Upload both files here (drag & drop or select individually)</li>
                   <li><strong>Edit Text</strong>: All text is 100% accurate and fully editable on canvas</li>
                   <li><strong>Export</strong>: Download as PNG/JPG or copy to clipboard</li>
+                </ol>
+              ) : (
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <li><strong>PDF 업로드</strong>: NotebookLM PDF를 업로드하면 텍스트 레이어에서 직접 추출 (폰트 정보 포함)</li>
+                  <li><strong>이미지 업로드</strong>: PDF 스크린샷이나 이미지는 OCR로 텍스트 추출 (한글 + 영문)</li>
+                  <li>캔버스에서 텍스트를 직접 클릭하고 편집할 수 있습니다.</li>
+                  <li>폰트 크기, 색상, 회전 각도를 조정할 수 있습니다.</li>
+                  <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
                 </ol>
               )}
             </div>

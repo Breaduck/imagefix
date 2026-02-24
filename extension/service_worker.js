@@ -5,16 +5,51 @@
 
 console.log('[Service Worker] Loaded');
 
+// Store active import sessions
+const importSessions = new Map();
+
 /**
- * Handle messages from popup
+ * Handle messages from popup and content scripts
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Legacy: from popup
   if (request.action === 'captureAndExport') {
     handleCaptureAndExport(request.data, request.tabId)
       .then((result) => sendResponse(result))
       .catch((err) => sendResponse({ success: false, error: err.message }));
 
     return true; // Keep channel open for async response
+  }
+
+  // New: Link import from webapp
+  if (request.type === 'IMPORT_URL') {
+    handleImportURL(request)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // Capture request from content script
+  if (request.type === 'CAPTURE_VISIBLE_TAB') {
+    handleCaptureVisibleTab(request, sender.tab)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // Export progress
+  if (request.type === 'EXPORT_PROGRESS') {
+    forwardProgressToWebapp(request);
+    sendResponse({ success: true });
+    return false;
+  }
+
+  // Export complete
+  if (request.type === 'EXPORT_COMPLETE') {
+    handleExportComplete(request)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 });
 
@@ -163,4 +198,219 @@ async function downloadUrl(url, filename) {
  */
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Handle import URL request from webapp
+ */
+async function handleImportURL(request) {
+  try {
+    const { requestId, url, sourceTabId } = request;
+
+    console.log('[Service Worker] Opening NotebookLM URL:', url);
+
+    // Open URL in new tab
+    const tab = await chrome.tabs.create({
+      url,
+      active: true,
+    });
+
+    // Store session
+    importSessions.set(requestId, {
+      requestId,
+      notebookLMTabId: tab.id,
+      sourceTabId: sourceTabId || null,
+      url,
+      createdAt: Date.now(),
+    });
+
+    // Wait for tab to load
+    await waitForTabLoad(tab.id);
+
+    console.log('[Service Worker] Tab loaded, injecting content script...');
+
+    // Ensure content script is loaded (should auto-inject via manifest, but double-check)
+    await sleep(1000);
+
+    // Trigger multi-slide export
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: 'RUN_MULTI_SLIDE_EXPORT',
+      requestId,
+      sourceTabId,
+    });
+
+    console.log('[Service Worker] Multi-slide export initiated:', response);
+
+    return {
+      success: true,
+      message: 'Export started',
+    };
+  } catch (err) {
+    console.error('[Service Worker] Import URL error:', err);
+    return {
+      success: false,
+      error: err.message,
+    };
+  }
+}
+
+/**
+ * Wait for tab to finish loading
+ */
+function waitForTabLoad(tabId) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Tab load timeout'));
+    }, 30000); // 30s timeout
+
+    const listener = (updatedTabId, changeInfo, tab) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve(tab);
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+/**
+ * Handle capture visible tab request
+ */
+async function handleCaptureVisibleTab(request, tab) {
+  try {
+    const { slideRect, dpr } = request;
+
+    console.log('[Service Worker] Capturing visible tab:', tab.id);
+
+    // Capture visible tab
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: 'png',
+    });
+
+    // Crop to slide area
+    const croppedDataUrl = await cropImage(dataUrl, {
+      sx: slideRect.x * dpr,
+      sy: slideRect.y * dpr,
+      sw: slideRect.width * dpr,
+      sh: slideRect.height * dpr,
+      dw: slideRect.width,
+      dh: slideRect.height,
+    });
+
+    return {
+      success: true,
+      dataUrl: croppedDataUrl,
+    };
+  } catch (err) {
+    console.error('[Service Worker] Capture error:', err);
+    return {
+      success: false,
+      error: err.message,
+    };
+  }
+}
+
+/**
+ * Forward progress to webapp
+ */
+async function forwardProgressToWebapp(request) {
+  const { requestId, sourceTabId, message } = request;
+
+  // Find webapp tab (if sourceTabId not available, find by URL pattern)
+  let webappTabId = sourceTabId;
+
+  if (!webappTabId) {
+    const tabs = await chrome.tabs.query({ url: '*://localhost:*/*' });
+    if (tabs.length > 0) {
+      webappTabId = tabs[0].id;
+    }
+  }
+
+  if (webappTabId) {
+    try {
+      await chrome.tabs.sendMessage(webappTabId, {
+        type: 'IMAGEFIX_IMPORT_PROGRESS',
+        requestId,
+        message,
+      });
+    } catch (err) {
+      // Tab might not have content script, use executeScript to post message
+      await chrome.scripting.executeScript({
+        target: { tabId: webappTabId },
+        func: (msg) => {
+          window.postMessage(msg, '*');
+        },
+        args: [{
+          type: 'IMAGEFIX_IMPORT_PROGRESS',
+          requestId,
+          message,
+        }],
+      });
+    }
+  }
+}
+
+/**
+ * Handle export complete
+ */
+async function handleExportComplete(request) {
+  try {
+    const { requestId, sourceTabId, slides } = request;
+
+    console.log('[Service Worker] Export complete:', slides.length, 'slides');
+
+    const session = importSessions.get(requestId);
+    if (!session) {
+      console.warn('[Service Worker] Session not found:', requestId);
+      return { success: false, error: 'Session not found' };
+    }
+
+    // Send results to webapp
+    let webappTabId = sourceTabId;
+
+    if (!webappTabId) {
+      const tabs = await chrome.tabs.query({ url: '*://localhost:*/*' });
+      if (tabs.length > 0) {
+        webappTabId = tabs[0].id;
+      }
+    }
+
+    if (webappTabId) {
+      await chrome.scripting.executeScript({
+        target: { tabId: webappTabId },
+        func: (result) => {
+          window.postMessage(result, '*');
+        },
+        args: [{
+          type: 'IMAGEFIX_IMPORT_RESULT',
+          requestId,
+          slides,
+        }],
+      });
+
+      console.log('[Service Worker] Results sent to webapp');
+    }
+
+    // Close NotebookLM tab
+    if (session.notebookLMTabId) {
+      await chrome.tabs.remove(session.notebookLMTabId);
+      console.log('[Service Worker] Closed NotebookLM tab');
+    }
+
+    // Clean up session
+    importSessions.delete(requestId);
+
+    return {
+      success: true,
+      slideCount: slides.length,
+    };
+  } catch (err) {
+    console.error('[Service Worker] Export complete error:', err);
+    return {
+      success: false,
+      error: err.message,
+    };
+  }
 }
