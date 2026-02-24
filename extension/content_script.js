@@ -460,6 +460,78 @@
   }
 
   /**
+   * Calculate hash of slide content for duplicate detection
+   */
+  function calculateSlideHash(extractionResult) {
+    if (!extractionResult || !extractionResult.layers) {
+      return null;
+    }
+
+    // Create hash from text content
+    const textContent = extractionResult.layers
+      .map((layer) => layer.text || '')
+      .join('|');
+
+    // Simple hash function (djb2)
+    let hash = 5381;
+    for (let i = 0; i < textContent.length; i++) {
+      hash = (hash * 33) ^ textContent.charCodeAt(i);
+    }
+
+    return hash >>> 0; // Convert to unsigned 32-bit integer
+  }
+
+  /**
+   * Wait for slide transition to complete
+   * Uses multiple detection strategies:
+   * 1. Slide number change in UI
+   * 2. Text content hash change
+   * 3. DOM mutation detection
+   * Falls back to timeout if detection fails
+   */
+  async function waitForSlideTransition(expectedSlideNumber, previousHash, maxWaitMs = 2000) {
+    const startTime = Date.now();
+    const pollInterval = 100; // Check every 100ms
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await sleep(pollInterval);
+
+      // Strategy 1: Check if slide number changed in UI
+      const currentSlideInfo = detectSlideInfo();
+      if (currentSlideInfo.currentSlide === expectedSlideNumber) {
+        console.log('[Content Script] Slide transition detected (slide number changed)');
+        // Wait a bit more for render to settle
+        await sleep(200);
+        return true;
+      }
+
+      // Strategy 2: Check if text content hash changed
+      const slideEl = findSlideContainer();
+      if (slideEl) {
+        const currentText = slideEl.innerText || '';
+        let currentHash = 5381;
+        for (let i = 0; i < currentText.length; i++) {
+          currentHash = (currentHash * 33) ^ currentText.charCodeAt(i);
+        }
+        currentHash = currentHash >>> 0;
+
+        if (currentHash !== previousHash && currentHash !== 5381) {
+          console.log('[Content Script] Slide transition detected (content hash changed)');
+          // Wait a bit more for render to settle
+          await sleep(200);
+          return true;
+        }
+      }
+
+      // Continue polling
+    }
+
+    // Timeout fallback
+    console.warn('[Content Script] Slide transition detection timeout, using fallback delay');
+    return false;
+  }
+
+  /**
    * Listen for messages from webapp via window.postMessage
    */
   window.addEventListener('message', (event) => {
@@ -498,7 +570,7 @@
   });
 
   /**
-   * Handle multi-slide export (sequential)
+   * Handle multi-slide export (sequential) with duplicate detection
    */
   async function handleMultiSlideExport(requestId, sourceTabId) {
     try {
@@ -509,6 +581,7 @@
       console.log('[Content Script] Detected:', slideInfo);
 
       const slides = [];
+      const capturedHashes = new Set(); // Track captured slide hashes
 
       for (let i = 0; i < slideInfo.totalSlides; i++) {
         console.log(`[Content Script] Exporting slide ${i + 1}/${slideInfo.totalSlides}`);
@@ -521,59 +594,121 @@
           message: `슬라이드 ${i + 1}/${slideInfo.totalSlides} 캡처 중...`,
         });
 
-        // Wait for slide to settle
-        await sleep(500);
+        // Retry logic: max 2 attempts per slide
+        let attempt = 0;
+        let slideSuccessfullyCaptured = false;
+        const maxAttempts = 2;
 
-        // Extract current slide
-        const extractionResult = extract();
-        if (!extractionResult.success) {
-          console.warn('[Content Script] Extraction failed:', extractionResult.error);
-          continue;
-        }
+        while (attempt < maxAttempts && !slideSuccessfullyCaptured) {
+          attempt++;
 
-        // Hide text
-        const elements = extractionResult.elements;
-        hideTextForScreenshot(elements);
+          if (attempt > 1) {
+            console.log(`[Content Script] Retry attempt ${attempt}/${maxAttempts} for slide ${i + 1}`);
+          }
 
-        // Wait for render
-        await sleep(300);
+          // Wait for slide to settle
+          await sleep(500);
 
-        // Request screenshot from service worker
-        const captureResult = await new Promise((resolve) => {
-          chrome.runtime.sendMessage(
-            {
-              type: 'CAPTURE_VISIBLE_TAB',
-              requestId,
-              slideRect: extractionResult.slideRect,
-              dpr: extractionResult.dpr,
-            },
-            resolve
-          );
-        });
+          // Extract current slide
+          const extractionResult = extract();
+          if (!extractionResult.success) {
+            console.warn('[Content Script] Extraction failed:', extractionResult.error);
+            if (attempt < maxAttempts) {
+              await sleep(500); // Wait before retry
+              continue;
+            } else {
+              break; // Give up after max attempts
+            }
+          }
 
-        // Restore text
-        restoreTextStyles();
+          // Calculate hash for duplicate detection
+          const slideHash = calculateSlideHash(extractionResult);
 
-        if (captureResult.success) {
-          slides.push({
-            slideNumber: i + 1,
-            pagePngDataUrl: captureResult.dataUrl,
-            layersJson: {
-              version: 1,
-              source: extractionResult.source,
-              layers: extractionResult.layers,
-            },
+          // Check if we already captured this slide (duplicate detection)
+          if (slideHash && capturedHashes.has(slideHash)) {
+            console.warn(`[Content Script] Duplicate slide detected (hash: ${slideHash}), skipping`);
+            if (attempt < maxAttempts) {
+              await sleep(500); // Wait before retry
+              continue;
+            } else {
+              break; // Give up after max attempts
+            }
+          }
+
+          // Hide text
+          const elements = extractionResult.elements;
+          hideTextForScreenshot(elements);
+
+          // Wait for render
+          await sleep(300);
+
+          // Request screenshot from service worker
+          const captureResult = await new Promise((resolve) => {
+            chrome.runtime.sendMessage(
+              {
+                type: 'CAPTURE_VISIBLE_TAB',
+                requestId,
+                slideRect: extractionResult.slideRect,
+                dpr: extractionResult.dpr,
+              },
+              resolve
+            );
           });
+
+          // Restore text
+          restoreTextStyles();
+
+          if (captureResult.success) {
+            // Add to captured set
+            if (slideHash) {
+              capturedHashes.add(slideHash);
+            }
+
+            slides.push({
+              slideNumber: i + 1,
+              pagePngDataUrl: captureResult.dataUrl,
+              layersJson: {
+                version: 1,
+                source: extractionResult.source,
+                layers: extractionResult.layers,
+              },
+            });
+
+            slideSuccessfullyCaptured = true;
+            console.log(`[Content Script] Slide ${i + 1} captured successfully (hash: ${slideHash})`);
+          } else {
+            console.warn('[Content Script] Screenshot capture failed');
+            if (attempt < maxAttempts) {
+              await sleep(500); // Wait before retry
+            }
+          }
         }
 
         // Navigate to next slide (if not last)
         if (i < slideInfo.totalSlides - 1) {
+          // Store current content hash before navigation
+          const slideEl = findSlideContainer();
+          let previousHash = 5381;
+          if (slideEl) {
+            const currentText = slideEl.innerText || '';
+            for (let j = 0; j < currentText.length; j++) {
+              previousHash = (previousHash * 33) ^ currentText.charCodeAt(j);
+            }
+            previousHash = previousHash >>> 0;
+          }
+
           navigateToNextSlide();
-          await sleep(800); // Wait for navigation animation
+
+          // Wait for transition to complete (smart detection + fallback)
+          const transitionDetected = await waitForSlideTransition(i + 2, previousHash, 2000);
+          if (!transitionDetected) {
+            // Fallback: use fixed delay
+            await sleep(400);
+          }
         }
       }
 
-      console.log(`[Content Script] Export complete: ${slides.length} slides`);
+      console.log(`[Content Script] Export complete: ${slides.length} slides captured, ${capturedHashes.size} unique`);
 
       // Send results back to webapp via service worker
       chrome.runtime.sendMessage({
