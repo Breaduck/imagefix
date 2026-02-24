@@ -15,9 +15,9 @@ grantBtn.addEventListener('click', async () => {
   grantBtn.textContent = '권한 요청 중...';
 
   try {
-    // Request capture permission (https + http)
+    // Request <all_urls> permission (required for captureVisibleTab)
     const granted = await chrome.permissions.request({
-      origins: ['https://*/*', 'http://*/*']
+      origins: ['<all_urls>']
     });
 
     console.log('[Permission] Request result:', granted);

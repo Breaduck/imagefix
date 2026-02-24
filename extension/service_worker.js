@@ -3,7 +3,7 @@
  * Handles screenshot capture and file downloads
  */
 
-const BUILD_INFO = '2026-02-24T20:00Z_final-fix';
+const BUILD_INFO = '2026-02-24T20:15Z_allurls-required';
 console.log('[Service Worker] Loaded - build', BUILD_INFO);
 
 // Store active import sessions
@@ -258,16 +258,12 @@ async function handleImportURL(request) {
 
     console.log('[Service Worker] Opening NotebookLM URL:', url);
 
-    // Check if we have capture permission (https + http)
-    const hasHttpsPerm = await chrome.permissions.contains({
-      origins: ['https://*/*']
+    // Check if we have <all_urls> permission (required for captureVisibleTab)
+    const hasCapturePerm = await chrome.permissions.contains({
+      origins: ['<all_urls>']
     });
-    const hasHttpPerm = await chrome.permissions.contains({
-      origins: ['http://*/*']
-    });
-    const hasCapturePerm = hasHttpsPerm || hasHttpPerm;
 
-    console.log('[SW] contains capturePerm=https', hasHttpsPerm, 'http', hasHttpPerm);
+    console.log('[SW] contains(<all_urls>)=', hasCapturePerm);
 
     if (!hasCapturePerm) {
       console.log('[SW] Missing capture permission, sending error to webapp');
