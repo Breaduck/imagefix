@@ -204,7 +204,7 @@
         // Sort by x
         cluster.sort((a, b) => a.rectSlideLocal.x - b.rectSlideLocal.x);
 
-        // Merge text with space detection
+        // Merge text with improved space detection
         let mergedText = cluster[0].text;
         for (let i = 1; i < cluster.length; i++) {
           const prev = cluster[i - 1];
@@ -213,8 +213,12 @@
           const gap = curr.rectSlideLocal.x - (prev.rectSlideLocal.x + prev.rectSlideLocal.w);
           const avgFontSize = (prev.style.fontSizePx + curr.style.fontSizePx) / 2;
 
-          // Korean: gap > fontSize*0.4, English: gap > fontSize*0.2
-          const threshold = /[\u3131-\uD79D]/.test(curr.text) ? avgFontSize * 0.4 : avgFontSize * 0.2;
+          // Estimate average character width (assuming ~0.5-0.6 of fontSize for proportional fonts)
+          const avgCharWidth = avgFontSize * 0.55;
+
+          // Improved threshold: merge if gap < 1.5x character width
+          // This handles both tight spacing and normal word spacing better
+          const threshold = avgCharWidth * 1.5;
 
           if (gap > threshold) {
             mergedText += ' ';
@@ -300,6 +304,18 @@
       // Merge into lines
       const layers = mergeIntoLines(elements);
 
+      // Detect canvas-rendered slides (low quality extraction)
+      const totalTextLength = layers.reduce((sum, layer) => sum + (layer.text?.length || 0), 0);
+      const isLikelyCanvasRendered = layers.length < 5 || totalTextLength < 20;
+
+      if (isLikelyCanvasRendered) {
+        console.warn('[Extractor] Low quality extraction detected:', {
+          layers: layers.length,
+          totalTextLength,
+          reason: layers.length < 5 ? 'Too few text layers (< 5)' : 'Too little text content (< 20 chars)',
+        });
+      }
+
       // Build export data
       const data = {
         version: 1,
@@ -312,6 +328,7 @@
           slideX: Math.round(slideRect.x),
           slideY: Math.round(slideRect.y),
           createdAt: new Date().toISOString(),
+          isLikelyCanvasRendered, // Quality warning
         },
         layers,
         _elements: elements.map((el) => ({
@@ -324,6 +341,7 @@
       console.log('[Extractor] Extraction complete:', {
         elements: elements.length,
         layers: layers.length,
+        quality: isLikelyCanvasRendered ? 'LOW (likely canvas-rendered)' : 'OK',
       });
 
       // Store elements for screenshot hiding
@@ -331,6 +349,18 @@
 
       return {
         success: true,
+        // Flattened structure for easier access
+        elements,
+        layers: data.layers,
+        source: data.source,
+        slideRect: {
+          x: slideRect.x,
+          y: slideRect.y,
+          width: slideRect.width,
+          height: slideRect.height,
+        },
+        dpr: data.source.dpr,
+        // Full data for compatibility
         data,
       };
     } catch (err) {
