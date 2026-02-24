@@ -2,23 +2,28 @@
 
 import { useState } from 'react';
 import { DropZone } from '@/components/molecules/DropZone';
+import { DOMImportZone } from '@/components/molecules/DOMImportZone';
 import { LoadingSpinner } from '@/components/atoms/LoadingSpinner';
 import { EditorLayout } from '@/components/templates/EditorLayout';
 import { PDFEditorLayout } from '@/components/templates/PDFEditorLayout';
 import { useImageUpload } from '@/hooks/useImageUpload';
 import { useTextExtraction } from '@/hooks/useTextExtraction';
 import { usePDFExtraction } from '@/hooks/usePDFExtraction';
+import { useDOMImport } from '@/hooks/useDOMImport';
 import { PDFPageData } from '@/types/pdf.types';
 import { isTextLayerUsable, renderPDFPage, loadPDF } from '@/lib/pdf/pdf-text-extractor';
 import { OCRProvider } from '@/lib/ocr/providers';
 
-type FileType = 'image' | 'pdf';
+type FileType = 'image' | 'pdf' | 'dom';
+type ImportMode = 'ocr' | 'dom';
 
 export default function Home() {
+  const [importMode, setImportMode] = useState<ImportMode>('ocr');
   const [ocrProvider, setOcrProvider] = useState<OCRProvider>('tesseract');
   const { imageData, uploadImage, isUploading, clearImage } = useImageUpload();
   const { isProcessing: isOCRProcessing, progress: ocrProgress, error: ocrError, textRegions, extractText, clearResults: clearOCRResults } = useTextExtraction(ocrProvider);
   const { isProcessing: isPDFProcessing, progress: pdfProgress, error: pdfError, pageData, totalPages, currentPage, extractFromPDF, clearResults: clearPDFResults } = usePDFExtraction();
+  const { isProcessing: isDOMProcessing, error: domError, result: domResult, importDOMFiles, clearResults: clearDOMResults } = useDOMImport();
 
   const [stage, setStage] = useState<'upload' | 'processing' | 'editing'>('upload');
   const [fileType, setFileType] = useState<FileType>('image');
@@ -133,10 +138,32 @@ export default function Home() {
     }
   };
 
+  const handleDOMFilesSelect = async (pngFile: File, jsonFile: File) => {
+    console.log('[HomePage] DOM files selected:', pngFile.name, jsonFile.name);
+
+    try {
+      setStage('processing');
+      const result = await importDOMFiles(pngFile, jsonFile);
+      console.log('[HomePage] DOM import complete:', {
+        imageSize: `${result.imageWidth}x${result.imageHeight}`,
+        textRegions: result.textRegions.length,
+      });
+
+      setFileType('dom');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+    } catch (err) {
+      console.error('[HomePage] DOM import error:', err);
+      alert('DOM 파일 처리 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
+      setStage('upload');
+    }
+  };
+
   const handleReset = () => {
     clearImage();
     clearOCRResults();
     clearPDFResults();
+    clearDOMResults();
     setPdfFile(null);
     setStage('upload');
   };
@@ -209,62 +236,114 @@ export default function Home() {
               </p>
             </header>
 
-            {/* Upload Area */}
-            <div className="mb-8">
-              <DropZone onFileSelect={handleFileSelect} disabled={isUploading} />
-              {isUploading && (
-                <div className="mt-4">
-                  <LoadingSpinner message="이미지 로딩 중..." />
-                </div>
-              )}
-            </div>
-
-            {/* OCR Provider Selection */}
+            {/* Import Mode Selection */}
             <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <h3 className="font-semibold mb-3">OCR 품질 선택</h3>
+              <h3 className="font-semibold mb-3">Import Method</h3>
               <div className="flex gap-4">
                 <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
-                    name="ocrProvider"
-                    value="tesseract"
-                    checked={ocrProvider === 'tesseract'}
-                    onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                    name="importMode"
+                    value="ocr"
+                    checked={importMode === 'ocr'}
+                    onChange={(e) => setImportMode(e.target.value as ImportMode)}
                     className="mr-2"
                   />
                   <div>
-                    <span className="font-medium">기본 OCR (Tesseract)</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">클라이언트 측 처리, 무료, 빠름</p>
+                    <span className="font-medium">OCR Import (PDF/Image)</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Upload PDF or image, extract with OCR</p>
                   </div>
                 </label>
                 <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
-                    name="ocrProvider"
-                    value="clova"
-                    checked={ocrProvider === 'clova'}
-                    onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                    name="importMode"
+                    value="dom"
+                    checked={importMode === 'dom'}
+                    onChange={(e) => setImportMode(e.target.value as ImportMode)}
                     className="mr-2"
                   />
                   <div>
-                    <span className="font-medium">고품질 OCR (CLOVA)</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">서버 측 처리, 높은 정확도, API 키 필요</p>
+                    <span className="font-medium">DOM Import (PNG + JSON)</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">From NotebookLM extension, 100% accurate</p>
                   </div>
                 </label>
               </div>
             </div>
 
+            {/* Upload Area */}
+            <div className="mb-8">
+              {importMode === 'ocr' ? (
+                <>
+                  <DropZone onFileSelect={handleFileSelect} disabled={isUploading} />
+                  {isUploading && (
+                    <div className="mt-4">
+                      <LoadingSpinner message="이미지 로딩 중..." />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <DOMImportZone onFilesSelect={handleDOMFilesSelect} disabled={isDOMProcessing} />
+              )}
+            </div>
+
+            {/* OCR Provider Selection (only for OCR mode) */}
+            {importMode === 'ocr' && (
+              <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="font-semibold mb-3">OCR 품질 선택</h3>
+                <div className="flex gap-4">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="ocrProvider"
+                      value="tesseract"
+                      checked={ocrProvider === 'tesseract'}
+                      onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                      className="mr-2"
+                    />
+                    <div>
+                      <span className="font-medium">기본 OCR (Tesseract)</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">클라이언트 측 처리, 무료, 빠름</p>
+                    </div>
+                  </label>
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="ocrProvider"
+                      value="clova"
+                      checked={ocrProvider === 'clova'}
+                      onChange={(e) => setOcrProvider(e.target.value as OCRProvider)}
+                      className="mr-2"
+                    />
+                    <div>
+                      <span className="font-medium">고품질 OCR (CLOVA)</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">서버 측 처리, 높은 정확도, API 키 필요</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Instructions */}
             <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">사용 방법</h3>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                <li><strong>PDF 업로드</strong>: NotebookLM PDF를 업로드하면 텍스트 레이어에서 직접 추출 (폰트 정보 포함)</li>
-                <li><strong>이미지 업로드</strong>: PDF 스크린샷이나 이미지는 OCR로 텍스트 추출 (한글 + 영문)</li>
-                <li>캔버스에서 텍스트를 직접 클릭하고 편집할 수 있습니다.</li>
-                <li>폰트 크기, 색상, 회전 각도를 조정할 수 있습니다.</li>
-                <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
-              </ol>
-
+              {importMode === 'ocr' ? (
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <li><strong>PDF 업로드</strong>: NotebookLM PDF를 업로드하면 텍스트 레이어에서 직접 추출 (폰트 정보 포함)</li>
+                  <li><strong>이미지 업로드</strong>: PDF 스크린샷이나 이미지는 OCR로 텍스트 추출 (한글 + 영문)</li>
+                  <li>캔버스에서 텍스트를 직접 클릭하고 편집할 수 있습니다.</li>
+                  <li>폰트 크기, 색상, 회전 각도를 조정할 수 있습니다.</li>
+                  <li>편집이 완료되면 PNG/JPG로 다운로드하거나 클립보드에 복사하세요.</li>
+                </ol>
+              ) : (
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <li><strong>Chrome Extension</strong>: Install the NotebookLM extension from /extension folder</li>
+                  <li><strong>Export Slide</strong>: Open NotebookLM, click extension, export current slide as PNG + JSON</li>
+                  <li><strong>Upload Files</strong>: Upload both files here (drag & drop or select individually)</li>
+                  <li><strong>Edit Text</strong>: All text is 100% accurate and fully editable on canvas</li>
+                  <li><strong>Export</strong>: Download as PNG/JPG or copy to clipboard</li>
+                </ol>
+              )}
             </div>
 
             {/* Features */}
@@ -330,7 +409,13 @@ export default function Home() {
           <div className="text-center">
             <LoadingSpinner
               size="lg"
-              message={fileType === 'pdf' ? 'PDF 처리 중...' : '텍스트 추출 중...'}
+              message={
+                fileType === 'dom'
+                  ? 'DOM 파일 처리 중...'
+                  : fileType === 'pdf'
+                    ? 'PDF 처리 중...'
+                    : '텍스트 추출 중...'
+              }
             />
             {((fileType === 'pdf' ? pdfProgress : ocrProgress) > 0) && (
               <div className="mt-6">
@@ -347,9 +432,9 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {(pdfError || ocrError) && (
+            {(pdfError || ocrError || domError) && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 max-w-md mx-auto">
-                오류: {pdfError || ocrError}
+                오류: {pdfError || ocrError || domError}
               </div>
             )}
           </div>
@@ -366,6 +451,15 @@ export default function Home() {
               currentPage={pageData.pageNumber}
               totalPages={pageData.totalPages}
               onPageChange={handlePageChange}
+              onReset={handleReset}
+            />
+          ) : fileType === 'dom' && domResult ? (
+            <EditorLayout
+              key={domResult.imageUrl}
+              imageUrl={domResult.imageUrl}
+              imageWidth={domResult.imageWidth}
+              imageHeight={domResult.imageHeight}
+              textRegions={domResult.textRegions}
               onReset={handleReset}
             />
           ) : fileType === 'image' && imageData ? (
