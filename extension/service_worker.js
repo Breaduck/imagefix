@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // New: Link import from webapp
   if (request.type === 'IMPORT_URL') {
-    handleImportURL(request)
+    handleImportURL(request, sender)
       .then((result) => sendResponse(result))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
@@ -252,11 +252,13 @@ function sleep(ms) {
 /**
  * Handle import URL request from webapp
  */
-async function handleImportURL(request) {
+async function handleImportURL(request, sender) {
   try {
     const { requestId, url, sourceTabId } = request;
+    const webappTabId = sender?.tab?.id || sourceTabId;
 
     console.log('[Service Worker] Opening NotebookLM URL:', url);
+    console.log('[SW] webappTabId captured:', webappTabId);
 
     // Check if we have <all_urls> permission (required for captureVisibleTab)
     const hasCapturePerm = await chrome.permissions.contains({
@@ -268,31 +270,20 @@ async function handleImportURL(request) {
     if (!hasCapturePerm) {
       console.log('[SW] Missing capture permission, sending error to webapp');
 
-      // Find webapp tab
-      let webappTabId = sourceTabId;
-      if (!webappTabId) {
-        const tabs = await chrome.tabs.query({
-          url: ['http://localhost:*/*', 'https://imagefix-dun.vercel.app/*']
-        });
-        if (tabs.length > 0) {
-          webappTabId = tabs[0].id;
-        }
-      }
-
       // Send error to webapp
       if (webappTabId) {
-        await chrome.scripting.executeScript({
-          target: { tabId: webappTabId },
-          func: (error) => {
-            window.postMessage(error, '*');
-          },
-          args: [{
+        console.log('[SW] sending ERROR to webappTabId=', webappTabId, 'code=CAPTURE_PERMISSION_REQUIRED');
+        try {
+          await chrome.tabs.sendMessage(webappTabId, {
             type: 'IMAGEFIX_IMPORT_ERROR',
             requestId: requestId,
             code: 'CAPTURE_PERMISSION_REQUIRED',
             message: '첫 1회 캡처 권한 허용이 필요합니다.',
-          }],
-        });
+          });
+          console.log('[SW] ERROR sent ok');
+        } catch (err) {
+          console.error('[SW] Failed to send ERROR:', err.message);
+        }
       }
 
       return {
@@ -311,6 +302,7 @@ async function handleImportURL(request) {
     importSessions.set(requestId, {
       requestId,
       notebookLMTabId: tab.id,
+      webappTabId: webappTabId,
       sourceTabId: sourceTabId || null,
       url,
       createdAt: Date.now(),
@@ -342,32 +334,21 @@ async function handleImportURL(request) {
     } catch (probeErr) {
       console.error('[SW] notebooklm probe inject fail', { message: probeErr.message });
 
-      // Find webapp tab
-      let webappTabId = sourceTabId;
-      if (!webappTabId) {
-        const tabs = await chrome.tabs.query({
-          url: ['http://localhost:*/*', 'https://imagefix-dun.vercel.app/*']
-        });
-        if (tabs.length > 0) {
-          webappTabId = tabs[0].id;
-        }
-      }
-
       // Send error to webapp
       if (webappTabId) {
-        await chrome.scripting.executeScript({
-          target: { tabId: webappTabId },
-          func: (error) => {
-            window.postMessage(error, '*');
-          },
-          args: [{
+        console.log('[SW] sending ERROR to webappTabId=', webappTabId, 'code=NOTEBOOKLM_PERMISSION_REQUIRED');
+        try {
+          await chrome.tabs.sendMessage(webappTabId, {
             type: 'IMAGEFIX_IMPORT_ERROR',
             requestId: requestId,
             code: 'NOTEBOOKLM_PERMISSION_REQUIRED',
             message: 'NotebookLM 사이트 액세스를 허용해야 합니다.',
             detail: probeErr.message,
-          }],
-        });
+          });
+          console.log('[SW] ERROR sent ok');
+        } catch (err) {
+          console.error('[SW] Failed to send ERROR:', err.message);
+        }
       }
 
       // Close NotebookLM tab
@@ -517,8 +498,8 @@ async function handleExportComplete(request) {
       return { success: false, error: 'Session not found' };
     }
 
-    // Find webapp tab
-    let webappTabId = sourceTabId;
+    // Get webapp tab from session
+    let webappTabId = session.webappTabId || sourceTabId;
 
     if (!webappTabId) {
       const tabs = await chrome.tabs.query({
@@ -534,20 +515,18 @@ async function handleExportComplete(request) {
       console.error('[Service Worker] No slides captured');
 
       if (webappTabId) {
-        await chrome.scripting.executeScript({
-          target: { tabId: webappTabId },
-          func: (error) => {
-            window.postMessage(error, '*');
-          },
-          args: [{
+        console.log('[SW] sending ERROR to webappTabId=', webappTabId, 'code=NO_SLIDES_CAPTURED');
+        try {
+          await chrome.tabs.sendMessage(webappTabId, {
             type: 'IMAGEFIX_IMPORT_ERROR',
             requestId,
             code: 'NO_SLIDES_CAPTURED',
             message: '슬라이드를 캡처하지 못했습니다. NotebookLM 페이지가 올바른지 확인해주세요.',
-          }],
-        });
-
-        console.log('[SW] result slides=0 -> error sent');
+          });
+          console.log('[SW] ERROR sent ok');
+        } catch (err) {
+          console.error('[SW] Failed to send ERROR:', err.message);
+        }
       }
 
       // Close NotebookLM tab
@@ -566,19 +545,17 @@ async function handleExportComplete(request) {
 
     // Send results to webapp
     if (webappTabId) {
-      await chrome.scripting.executeScript({
-        target: { tabId: webappTabId },
-        func: (result) => {
-          window.postMessage(result, '*');
-        },
-        args: [{
+      console.log('[SW] sending RESULT to webappTabId=', webappTabId, 'slides=', slides.length);
+      try {
+        await chrome.tabs.sendMessage(webappTabId, {
           type: 'IMAGEFIX_IMPORT_RESULT',
           requestId,
           slides,
-        }],
-      });
-
-      console.log('[SW] result slides=', slides.length);
+        });
+        console.log('[SW] RESULT sent ok');
+      } catch (err) {
+        console.error('[SW] Failed to send RESULT:', err.message);
+      }
     }
 
     // Close NotebookLM tab

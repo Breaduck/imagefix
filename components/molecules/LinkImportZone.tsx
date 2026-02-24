@@ -103,6 +103,7 @@ export function LinkImportZone({
       // Handle import result
       else if (data?.type === 'IMAGEFIX_IMPORT_RESULT') {
         const slides = data.slides || [];
+        console.log('[UI] IMPORT_RESULT received', { slideCount: slides.length });
         addLog('IMPORT_SUCCESS', { slideCount: slides.length });
         setIsImporting(false);
         setProgress('');

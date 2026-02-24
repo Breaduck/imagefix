@@ -93,23 +93,21 @@
 
     // Forward progress updates to webapp
     if (request.type === 'IMAGEFIX_IMPORT_PROGRESS') {
+      console.log('[Bridge] got PROGRESS from SW:', request.message);
       window.postMessage(
         {
           type: 'IMAGEFIX_IMPORT_PROGRESS',
           requestId: request.requestId,
           message: request.message,
         },
-        '*'
+        window.location.origin
       );
       sendResponse({ success: true });
     }
 
     // Forward import results to webapp
     if (request.type === 'IMAGEFIX_IMPORT_RESULT') {
-      console.log('[Webapp Bridge] Forwarding result to webapp:', {
-        requestId: request.requestId,
-        slides: request.slides?.length,
-      });
+      console.log('[Bridge] got RESULT from SW slides=', request.slides?.length);
 
       window.postMessage(
         {
@@ -117,15 +115,16 @@
           requestId: request.requestId,
           slides: request.slides,
         },
-        '*'
+        window.location.origin
       );
 
+      console.log('[Bridge] posted RESULT to webapp');
       sendResponse({ success: true });
     }
 
     // Forward errors to webapp
     if (request.type === 'IMAGEFIX_IMPORT_ERROR') {
-      console.log('[Webapp Bridge] Forwarding IMPORT_ERROR code=', request.code || 'none', 'message=', request.message);
+      console.log('[Bridge] got ERROR from SW code=', request.code || 'none', 'message=', request.message);
 
       window.postMessage(
         {
@@ -135,7 +134,7 @@
           message: request.message,
           detail: request.detail,
         },
-        '*'
+        window.location.origin
       );
 
       sendResponse({ success: true });
