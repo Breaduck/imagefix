@@ -30,6 +30,10 @@ export default function Home() {
   const [fileType, setFileType] = useState<FileType>('image');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
+  // Multi-slide support
+  const [allSlides, setAllSlides] = useState<{ pagePngDataUrl: string; layersJson: any }[]>([]);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+
   const handleFileSelect = async (file: File) => {
     console.log('[HomePage] File selected:', file.name, file.type, file.size);
 
@@ -175,8 +179,11 @@ export default function Home() {
     }
 
     try {
-      // For now, load the first slide
-      // TODO: support multi-slide editing
+      // Store all slides
+      setAllSlides(slides);
+      setCurrentSlideIndex(0);
+
+      // Load the first slide
       const firstSlide = slides[0];
 
       // Convert data URL to File for importDOMFiles
@@ -197,7 +204,7 @@ export default function Home() {
       setStage('editing');
 
       if (slides.length > 1) {
-        alert(`${slides.length}개의 슬라이드를 가져왔습니다. 현재는 첫 번째 슬라이드만 표시됩니다. (다중 슬라이드 편집은 추후 지원 예정)`);
+        console.log(`[HomePage] ${slides.length} slides available for navigation`);
       }
     } catch (err) {
       console.error('[HomePage] Link import rendering error:', err);
@@ -211,6 +218,65 @@ export default function Home() {
     alert('슬라이드 가져오기 실패: ' + error);
     setStage('upload');
   }, []);
+
+  // Slide navigation handlers
+  const handlePrevSlide = useCallback(async () => {
+    if (currentSlideIndex === 0 || allSlides.length === 0) return;
+
+    const newIndex = currentSlideIndex - 1;
+    console.log('[HomePage] Navigating to slide', newIndex + 1);
+
+    try {
+      setStage('processing');
+      const slide = allSlides[newIndex];
+
+      // Convert data URL to File for importDOMFiles
+      const pngBlob = await fetch(slide.pagePngDataUrl).then(r => r.blob());
+      const pngFile = new File([pngBlob], `slide-${newIndex + 1}.png`, { type: 'image/png' });
+
+      const jsonBlob = new Blob([JSON.stringify(slide.layersJson)], { type: 'application/json' });
+      const jsonFile = new File([jsonBlob], `layers-${newIndex + 1}.json`, { type: 'application/json' });
+
+      await importDOMFiles(pngFile, jsonFile);
+      setCurrentSlideIndex(newIndex);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+    } catch (err) {
+      console.error('[HomePage] Error loading slide:', err);
+      alert('슬라이드 로딩 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
+      setStage('editing');
+    }
+  }, [currentSlideIndex, allSlides, importDOMFiles]);
+
+  const handleNextSlide = useCallback(async () => {
+    if (currentSlideIndex >= allSlides.length - 1 || allSlides.length === 0) return;
+
+    const newIndex = currentSlideIndex + 1;
+    console.log('[HomePage] Navigating to slide', newIndex + 1);
+
+    try {
+      setStage('processing');
+      const slide = allSlides[newIndex];
+
+      // Convert data URL to File for importDOMFiles
+      const pngBlob = await fetch(slide.pagePngDataUrl).then(r => r.blob());
+      const pngFile = new File([pngBlob], `slide-${newIndex + 1}.png`, { type: 'image/png' });
+
+      const jsonBlob = new Blob([JSON.stringify(slide.layersJson)], { type: 'application/json' });
+      const jsonFile = new File([jsonBlob], `layers-${newIndex + 1}.json`, { type: 'application/json' });
+
+      await importDOMFiles(pngFile, jsonFile);
+      setCurrentSlideIndex(newIndex);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStage('editing');
+    } catch (err) {
+      console.error('[HomePage] Error loading slide:', err);
+      alert('슬라이드 로딩 중 오류가 발생했습니다: ' + (err instanceof Error ? err.message : String(err)));
+      setStage('editing');
+    }
+  }, [currentSlideIndex, allSlides, importDOMFiles]);
 
   const handleReset = () => {
     clearImage();
@@ -537,12 +603,16 @@ export default function Home() {
             />
           ) : fileType === 'dom' && domResult ? (
             <EditorLayout
-              key={domResult.imageUrl}
+              key={`slide-${currentSlideIndex}-${domResult.imageUrl}`}
               imageUrl={domResult.imageUrl}
               imageWidth={domResult.imageWidth}
               imageHeight={domResult.imageHeight}
               textRegions={domResult.textRegions}
               onReset={handleReset}
+              currentSlide={allSlides.length > 0 ? currentSlideIndex : undefined}
+              totalSlides={allSlides.length > 0 ? allSlides.length : undefined}
+              onPrevSlide={allSlides.length > 1 ? handlePrevSlide : undefined}
+              onNextSlide={allSlides.length > 1 ? handleNextSlide : undefined}
             />
           ) : fileType === 'image' && imageData ? (
             <EditorLayout

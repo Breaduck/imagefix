@@ -12,6 +12,14 @@ const importSessions = new Map();
  * Handle messages from popup and content scripts
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Get extension status (version + permissions)
+  if (request.type === 'GET_EXTENSION_STATUS') {
+    handleGetExtensionStatus()
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ version: 'unknown', hasNotebookLMPermission: false, error: err.message }));
+    return true;
+  }
+
   // Legacy: from popup
   if (request.action === 'captureAndExport') {
     handleCaptureAndExport(request.data, request.tabId)
@@ -52,6 +60,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+/**
+ * Get extension status (version + permissions)
+ */
+async function handleGetExtensionStatus() {
+  try {
+    // Get manifest for version
+    const manifest = chrome.runtime.getManifest();
+    const version = manifest.version;
+
+    // Check if we have NotebookLM permission
+    const hasNotebookLMPermission = await chrome.permissions.contains({
+      origins: ['https://notebooklm.google.com/*']
+    });
+
+    console.log('[Service Worker] Extension status:', { version, hasNotebookLMPermission });
+
+    return {
+      version,
+      hasNotebookLMPermission,
+    };
+  } catch (error) {
+    console.error('[Service Worker] Error getting extension status:', error);
+    return {
+      version: 'unknown',
+      hasNotebookLMPermission: false,
+      error: error.message,
+    };
+  }
+}
 
 /**
  * Main capture and export logic
