@@ -2,6 +2,91 @@
 
 **간단한 URL 붙여넣기로 NotebookLM 슬라이드 전체 자동 캡처!**
 
+## 🧪 Web Store 없이 테스트하기 (Load unpacked)
+
+크롬 웹스토어에 업로드하기 전에 로컬에서 100% 동작 확인이 가능합니다.
+
+### 1단계: 확장프로그램 설치 (개발자 모드)
+
+```bash
+1. Chrome 열기
+2. chrome://extensions/ 이동
+3. 우측 상단 "개발자 모드" 토글 켜기
+4. "압축 해제된 확장 프로그램을 로드합니다" 클릭
+5. notebook-text-editor/extension 폴더 선택
+6. 확장프로그램이 로드되면 ID 확인 (예: abcdefghijklmnop...)
+```
+
+### 2단계: 사이트 액세스 권한 설정
+
+**중요**: Load unpacked 방식은 기본적으로 모든 사이트 접근이 차단됩니다.
+
+```bash
+1. chrome://extensions/ 에서 "ImageFix Link Import Companion" 찾기
+2. "세부정보" 클릭
+3. "사이트 액세스" 섹션에서:
+   - "notebooklm.google.com" 추가 → "허용"
+   - "imagefix-dun.vercel.app" 추가 → "허용"
+   - "localhost" (개발 중이라면) → "허용"
+4. 저장
+```
+
+### 3단계: 웹앱 새로고침 (Hard Refresh)
+
+```bash
+1. https://imagefix-dun.vercel.app 열기
+2. Ctrl+Shift+R (Windows) 또는 Cmd+Shift+R (Mac) - 하드 리프레시
+3. F12 눌러서 개발자 도구 열기
+4. Console 탭 확인
+```
+
+### 4단계: 연결 확인
+
+**기대 로그 (Console):**
+
+```
+[Webapp Bridge] Loaded on: https://imagefix-dun.vercel.app
+[Webapp Bridge] Ready and listening
+[LinkImport] Extension detected: { version: "1.1.0", hasNotebookLMPermission: true }
+```
+
+**기대 화면:**
+
+✅ "ImageFix Link Import Companion 연결됨 (v1.1.0)" 녹색 배너가 보여야 함
+
+**만약 "확장프로그램 설치 필요" 파란색 배너가 보인다면:**
+
+- PING/PONG 통신 실패 → 2단계(사이트 액세스 권한) 다시 확인
+- Console에서 `[Webapp Bridge] Loaded` 로그가 없다면 → manifest.json의 content_scripts 확인
+- 진단 로그 복사 버튼 클릭 → GitHub Issue에 첨부
+
+### 5단계: 실제 테스트
+
+```bash
+1. NotebookLM 프레젠테이션 URL 복사
+   예: https://notebooklm.google.com/notebook/abc123/audio
+2. 웹앱에 붙여넣기
+3. "슬라이드 가져오기" 클릭
+4. Console 로그 확인:
+   [Webapp Bridge] Received IMPORT_REQUEST: { requestId: "req_...", url: "..." }
+   [SW] IMPORT_URL recv url=...
+   [SW] tab created id=123
+   [CS] extracted layers=15 slideRect=...
+   [SW] closing tab id=123
+   [LinkImport] Received results: 5 slides
+```
+
+### 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| "확장프로그램 설치 필요" 배너 | PONG 못 받음 | 사이트 액세스 권한 확인, 하드 리프레시 |
+| "권한 설정 필요" 배너 | NotebookLM 권한 없음 | chrome://extensions에서 notebooklm.google.com 허용 |
+| Console에 `[Webapp Bridge]` 없음 | content_script 주입 실패 | manifest.json 확인, 확장 재로드 |
+| 슬라이드 캡처 실패 | NotebookLM 로그인 필요 | Chrome에서 NotebookLM 먼저 로그인 |
+
+---
+
 ## 개요
 
 기존 방식 (복잡):
