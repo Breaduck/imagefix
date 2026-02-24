@@ -646,15 +646,15 @@
     // Handle crop request from service worker
     if (request.type === 'IMAGEFIX_CROP_IMAGE') {
       const { fullPngDataUrl, slideRect, dpr } = request;
-      console.log('[CS] Crop request received, slideRect:', slideRect);
+      console.log('[CS][LINK] Crop request received, slideRect:', slideRect);
 
       cropImageInContentScript(fullPngDataUrl, slideRect, dpr)
         .then((croppedDataUrl) => {
-          console.log('[CS] crop ok w/h=', slideRect.width, 'x', slideRect.height);
+          console.log('[CS][LINK] crop ok w/h=', slideRect.width, 'x', slideRect.height);
           sendResponse({ success: true, croppedDataUrl });
         })
         .catch((err) => {
-          console.error('[CS] Crop failed:', err);
+          console.error('[CS][LINK] Crop failed:', err);
           sendResponse({ success: false, error: err.message });
         });
 

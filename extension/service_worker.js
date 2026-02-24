@@ -3,7 +3,8 @@
  * Handles screenshot capture and file downloads
  */
 
-console.log('[Service Worker] Loaded');
+const BUILD_INFO = '2026-02-24T19:45Z_no-sw-crop';
+console.log('[Service Worker] Loaded - build', BUILD_INFO);
 
 // Store active import sessions
 const importSessions = new Map();
@@ -171,6 +172,7 @@ async function handleCaptureAndExport(data, tabId) {
  * Request crop from content script (no DOM in service worker)
  */
 async function requestCropFromContentScript(tabId, fullPngDataUrl, slideRect, dpr) {
+  console.log('[SW][LINK] sending crop request to content_script, tabId=', tabId);
   return new Promise((resolve, reject) => {
     chrome.tabs.sendMessage(
       tabId,
@@ -182,10 +184,13 @@ async function requestCropFromContentScript(tabId, fullPngDataUrl, slideRect, dp
       },
       (response) => {
         if (chrome.runtime.lastError) {
+          console.error('[SW][LINK] crop request failed:', chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else if (!response || !response.success) {
+          console.error('[SW][LINK] crop failed:', response?.error);
           reject(new Error(response?.error || 'Crop failed'));
         } else {
+          console.log('[SW][LINK] crop success from CS');
           resolve(response.croppedDataUrl);
         }
       }
@@ -431,16 +436,17 @@ async function handleCaptureVisibleTab(request, tab) {
   try {
     const { slideRect, dpr } = request;
 
-    console.log('[Service Worker] Capturing visible tab:', tab.id);
+    console.log('[SW][LINK] Capturing visible tab:', tab.id);
 
     // Capture visible tab
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
       format: 'png',
     });
 
-    console.log('[SW] capture ok len=', dataUrl.substring(0, 30) + '...');
+    console.log('[SW][LINK] capture ok len=', dataUrl.substring(0, 30) + '...');
+    console.log('[SW][LINK] using content-script crop');
 
-    // Crop to slide area (delegate to content script)
+    // LINK IMPORT: Always use content-script crop (DOM available there)
     const croppedDataUrl = await requestCropFromContentScript(tab.id, dataUrl, slideRect, dpr);
 
     return {
