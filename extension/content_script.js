@@ -447,22 +447,27 @@
     }
 
     // Fallback: try to count slide thumbnails in sidebar
-    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="slide-preview"]');
-    if (thumbnails.length > 0) {
+    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="slide-preview"], [role="tab"]');
+    if (thumbnails.length > 1) {
+      console.log(`[Content Script] Detected ${thumbnails.length} thumbnails`);
       return {
         currentSlide: 1, // Assume first slide
         totalSlides: thumbnails.length,
       };
     }
 
+    // Last resort: assume multi-slide presentation, use MAX_SLIDES
+    // We'll detect "no more slides" dynamically during capture loop
+    console.warn('[Content Script] Could not detect slide count, using MAX_SLIDES=50');
     return {
       currentSlide: 1,
-      totalSlides: 1, // Assume single slide if can't detect
+      totalSlides: 50, // Will stop early when no more slides detected
     };
   }
 
   /**
    * Navigate to next slide
+   * @returns {boolean} true if navigation was possible, false if no next slide available
    */
   function navigateToNextSlide() {
     // Try common keyboard shortcuts
@@ -475,6 +480,11 @@
     ].filter(Boolean);
 
     if (nextButtons[0]) {
+      // Check if button is disabled
+      if (nextButtons[0].disabled || nextButtons[0].getAttribute('aria-disabled') === 'true') {
+        console.log('[Content Script] Next button is disabled, no more slides');
+        return false;
+      }
       nextButtons[0].click();
       return true;
     }
@@ -690,6 +700,7 @@
         // Retry logic: max 2 attempts per slide
         let attempt = 0;
         let slideSuccessfullyCaptured = false;
+        let lastCapturedHash = null; // Track hash for early exit detection
         const maxAttempts = 2;
 
         while (attempt < maxAttempts && !slideSuccessfullyCaptured) {
@@ -755,6 +766,7 @@
             // Add to captured set
             if (slideHash) {
               capturedHashes.add(slideHash);
+              lastCapturedHash = slideHash; // Store for next-slide detection
             }
 
             slides.push({
@@ -790,13 +802,28 @@
             previousHash = previousHash >>> 0;
           }
 
-          navigateToNextSlide();
+          const navigationSuccessful = navigateToNextSlide();
+          if (!navigationSuccessful) {
+            console.log('[Content Script] Navigation failed (next button disabled), stopping at slide', i + 1);
+            break; // Exit early - no more slides
+          }
 
           // Wait for transition to complete (smart detection + fallback)
           const transitionDetected = await waitForSlideTransition(i + 2, previousHash, 2000);
           if (!transitionDetected) {
             // Fallback: use fixed delay
             await sleep(400);
+          }
+
+          // Verify that slide actually changed by checking new content
+          await sleep(300); // Let new slide render
+          const verifyExtraction = extract();
+          if (verifyExtraction.success) {
+            const newHash = calculateSlideHash(verifyExtraction);
+            if (newHash === lastCapturedHash) {
+              console.log('[Content Script] No more slides detected (content unchanged), stopping at slide', i + 1);
+              break; // Exit early - no more slides
+            }
           }
         }
       }
