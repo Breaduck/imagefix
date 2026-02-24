@@ -102,25 +102,68 @@ export function LinkImportZone({
     <div className="space-y-4">
       {/* Extension Status Banner */}
       {extensionInstalled === false && (
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-          <div className="flex items-start space-x-3">
-            <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+        <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+            </div>
             <div className="flex-1">
-              <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
                 확장프로그램 설치 필요
               </h4>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
-                링크 붙여넣기 기능을 사용하려면 Chrome 확장프로그램을 설치해야 합니다.
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                링크만 붙여넣으면 자동으로 슬라이드를 캡처할 수 있습니다. 1회 설치 후 영구 사용!
               </p>
+
+              {/* CTA Button */}
               <a
-                href="/extension/README.md"
+                href="https://chrome.google.com/webstore/detail/EXTENSION_ID_PLACEHOLDER"
                 target="_blank"
-                className="text-sm font-medium text-yellow-800 dark:text-yellow-200 underline hover:no-underline"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
               >
-                설치 가이드 보기 →
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+                Chrome 웹 스토어에서 설치하기
               </a>
+
+              {/* 3-Step Guide */}
+              <div className="mt-4 p-4 bg-white dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-3">
+                  설치 후 사용법 (3단계):
+                </p>
+                <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full flex items-center justify-center text-xs font-bold mr-2">1</span>
+                    NotebookLM URL 복사
+                  </li>
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full flex items-center justify-center text-xs font-bold mr-2">2</span>
+                    여기에 붙여넣기
+                  </li>
+                  <li className="flex items-start">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full flex items-center justify-center text-xs font-bold mr-2">3</span>
+                    클릭 → 완료! (자동 캡처)
+                  </li>
+                </ol>
+              </div>
+
+              {/* Developer mode link (small) */}
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                개발자이신가요?{' '}
+                <a
+                  href="/extension/README.md"
+                  target="_blank"
+                  className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                >
+                  개발자 모드로 설치하기
+                </a>
+              </p>
             </div>
           </div>
         </div>

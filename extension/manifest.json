@@ -1,17 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "NotebookLM to ImageFix",
-  "version": "1.0.0",
-  "description": "Export NotebookLM slides as clean background + editable text layers",
+  "name": "ImageFix Link Import Companion",
+  "version": "1.1.0",
+  "description": "Automatically capture NotebookLM slides and send them to ImageFix webapp for editing. Just paste a link!",
+  "author": "ImageFix Team",
   "permissions": [
     "activeTab",
     "scripting",
-    "downloads",
     "storage",
     "tabs"
   ],
   "host_permissions": [
-    "https://notebooklm.google.com/*"
+    "https://notebooklm.google.com/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
@@ -25,15 +27,16 @@
   ],
   "action": {
     "default_popup": "popup.html",
+    "default_title": "Export NotebookLM slide to ImageFix",
     "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
   },
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }
