@@ -13,7 +13,7 @@
   "host_permissions": [
     "https://notebooklm.google.com/*",
     "http://localhost:3000/*",
-    "https://*.vercel.app/*"
+    "https://imagefix-dun.vercel.app/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
