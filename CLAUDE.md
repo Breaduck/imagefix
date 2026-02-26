@@ -41,12 +41,26 @@ Examples:
 - Before reading any files:
   - Run `git diff --name-only` and ONLY open files directly relevant to the task.
   - Prefer `rg` (ripgrep) search over opening large files.
-  - Do NOT read multiple files “just in case”.
+  - Do NOT read multiple files "just in case".
 - When uncertain:
   - Ask a short clarification question instead of reading more files.
 - Keep changes surgical:
   - Touch the fewest files possible.
   - Avoid large refactors unless explicitly requested.
+
+#### Efficiency checklist (CRITICAL)
+1. **Ask first, explore later**
+   - Multiple project folders? → Ask which one
+   - Unclear requirements? → Ask before reading files
+   - Better alternatives exist? → Propose them upfront
+2. **Target directly**
+   - Use specific file paths when mentioned in task
+   - Avoid broad Glob patterns that include node_modules
+   - Read only files you'll actually modify
+3. **Proactive suggestions**
+   - If you see a better approach → suggest it
+   - If requirements seem unclear → ask clarifying questions
+   - If trade-offs exist → present options before implementing
 
 ---
 
