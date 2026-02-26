@@ -226,7 +226,7 @@ export function CanvasEditor({
     };
     // Only re-render when canvas or imageUrl changes
     // textRegions and objectLayers are tracked via refs to prevent infinite loops
-  }, [canvas, imageUrl, imageWidth, imageHeight]);
+  }, [canvas, imageUrl]);
 
   // 텍스트 선택 이벤트
   useEffect(() => {
