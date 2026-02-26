@@ -139,7 +139,12 @@ export async function POST(request: NextRequest) {
 
     const { objectLayers, reason } = await extractObjectLayers(
       slidePngDataUrl,
-      textMaskBoxes
+      textMaskBoxes,
+      {
+        minAreaRatio: 0.005,
+        maxAreaRatio: 0.8,
+        iouThreshold: 0.7,
+      }
     );
 
     console.log(`[ExtractLayers] Extracted ${objectLayers.length} object layers`);
