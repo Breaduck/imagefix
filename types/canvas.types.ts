@@ -40,3 +40,31 @@ export interface CanvasState {
   backgroundMasks: BackgroundMask[];
   selectedTextId: string | null;
 }
+
+/**
+ * 비텍스트 객체 레이어 (이미지, 도형 등)
+ * 모든 좌표는 원본 이미지 픽셀 기준
+ */
+export interface ObjectLayer {
+  id: string;
+  pngDataUrl: string; // RGBA PNG data URL
+  x: number; // 원본 이미지 기준 x
+  y: number; // 원본 이미지 기준 y
+  width: number; // 원본 이미지 기준 width
+  height: number; // 원본 이미지 기준 height
+  fabricObject?: fabric.Image;
+}
+
+/**
+ * 레이어 추출 API 응답
+ */
+export interface LayerExtractionResult {
+  textLayers: TextRegion[];
+  objectLayers: ObjectLayer[];
+  stats: {
+    textCount: number;
+    objectCount: number;
+    processingTimeMs: number;
+    reason?: string; // Optional reason (e.g., SEGMENTER_NOT_CONFIGURED, SEGMENTER_BAD_RESPONSE)
+  };
+}

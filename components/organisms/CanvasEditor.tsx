@@ -7,8 +7,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '@/hooks/useFabricCanvas';
-import { TextRegion } from '@/types/canvas.types';
-import { bakeTextMasksToBackground } from '@/lib/canvas/background-baker';
+import { TextRegion, ObjectLayer } from '@/types/canvas.types';
 import { CanvasHistory } from '@/lib/canvas/history-manager';
 
 export interface CanvasEditorProps {
@@ -16,6 +15,7 @@ export interface CanvasEditorProps {
   imageWidth: number;
   imageHeight: number;
   textRegions: TextRegion[];
+  objectLayers?: ObjectLayer[];
   onTextSelect?: (regionId: string | null) => void;
   onTextUpdate?: (regionId: string, newText: string) => void;
   onCanvasReady?: (canvas: fabric.Canvas) => void;
@@ -27,13 +27,13 @@ export function CanvasEditor({
   imageWidth,
   imageHeight,
   textRegions,
+  objectLayers = [],
   onTextSelect,
   onTextUpdate,
   onCanvasReady,
   onHistoryReady,
 }: CanvasEditorProps) {
   const { canvas, canvasRef, isReady } = useFabricCanvas(imageWidth, imageHeight);
-  const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const historyRef = useRef<CanvasHistory | null>(null);
 
@@ -48,18 +48,12 @@ export function CanvasEditor({
   useEffect(() => {
     if (!canvas || !isReady) return;
 
-    // 히스토리 매니저 생성
     historyRef.current = new CanvasHistory(canvas);
-
-    // 키보드 단축키 설정 (Ctrl+Z, Ctrl+Y)
     const cleanup = historyRef.current.setupKeyboardShortcuts();
 
-    // 부모 컴포넌트에 히스토리 매니저 전달
     if (onHistoryReady && historyRef.current) {
       onHistoryReady(historyRef.current);
     }
-
-    console.log('[CanvasEditor] History manager initialized with keyboard shortcuts');
 
     return () => {
       cleanup();
@@ -67,242 +61,162 @@ export function CanvasEditor({
     };
   }, [canvas, isReady, onHistoryReady]);
 
-  // 배경 이미지 로드 (베이킹용, Fabric 오브젝트로 추가하지 않음!)
+  // 레이어 렌더링 (배경 이미지 + 객체 + 텍스트)
   useEffect(() => {
-    if (!canvas || !imageUrl) {
-      console.log('[CanvasEditor] Waiting for canvas or imageUrl', { canvas: !!canvas, imageUrl: !!imageUrl });
-      return;
-    }
+    if (!canvas || !imageUrl) return;
 
-    console.log('[CanvasEditor] Loading background image (for baking only, not as Fabric object)');
+    let isMounted = true;
     setIsLoading(true);
 
-    let isMounted = true;
-
-    // 이미지 엘리먼트 로드
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imageUrl;
-
-    img.onload = () => {
-      if (!isMounted) {
-        console.log('[CanvasEditor] Component unmounted, skipping image load');
-        return;
-      }
-
-      console.log('[CanvasEditor] ✅ Image loaded:', {
-        naturalWidth: img.naturalWidth,
-        naturalHeight: img.naturalHeight,
-        displayWidth: img.width,
-        displayHeight: img.height,
-      });
-
-      // 기존 배경 오브젝트 제거 (이중 배경 방지)
-      const existingBgObjects = canvas.getObjects().filter((obj: any) =>
-        obj.layerName === 'background-image' || obj.type === 'image'
-      );
-      existingBgObjects.forEach((obj) => {
-        console.log('[CanvasEditor] Removing existing background object:', obj.type);
-        canvas.remove(obj);
-      });
-
-      setBackgroundImg(img);
-      setIsLoading(false);
-    };
-
-    img.onerror = (error) => {
-      if (!isMounted) return;
-      console.error('[CanvasEditor] Failed to load background image:', error);
-      setIsLoading(false);
-    };
-
-    return () => {
-      isMounted = false;
-    };
-  }, [canvas, imageUrl]);
-
-  // 텍스트 영역 렌더링 with Background Baking (No Mask Objects!)
-  useEffect(() => {
-    if (!canvas || !backgroundImg) {
-      console.log('[CanvasEditor] Waiting for canvas or backgroundImg', { canvas: !!canvas, backgroundImg: !!backgroundImg });
-      return;
-    }
-
-    if (textRegions.length === 0) {
-      console.log('[CanvasEditor] No text regions to render');
-      return;
-    }
-
-    console.log('[CanvasEditor] 🔥 Rendering', textRegions.length, 'text regions with background baking');
-
-    let isMounted = true;
-
-    const renderWithBaking = async () => {
+    const renderLayers = async () => {
       try {
-        // Pause history tracking during programmatic setup
         if (historyRef.current) {
           historyRef.current.startProgrammaticUpdate();
         }
 
-        // 기존 텍스트 레이어 제거
-        const existingTexts = canvas.getObjects().filter((obj: any) => obj.layerName === 'editable-text');
-        existingTexts.forEach((obj) => canvas.remove(obj));
+        // 기존 오브젝트 제거
+        canvas.clear();
 
-        // Step 1: Create background canvas from image (naturalWidth/naturalHeight 사용)
-        const bgCanvas = document.createElement('canvas');
-        const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+        // 스케일 계산 (source image -> canvas)
+        const scaleX = (canvas.width || imageWidth) / imageWidth;
+        const scaleY = (canvas.height || imageHeight) / imageHeight;
 
-        if (!bgCtx) {
-          throw new Error('Failed to get canvas context');
-        }
+        console.log(`[Layer] scaleX=${scaleX.toFixed(3)} scaleY=${scaleY.toFixed(3)} canvasW/H=${canvas.width}/${canvas.height} srcW/H=${imageWidth}/${imageHeight}`);
 
-        // naturalWidth/naturalHeight를 사용하여 좌표계 정합성 보장
-        bgCanvas.width = backgroundImg.naturalWidth;
-        bgCanvas.height = backgroundImg.naturalHeight;
-        bgCtx.drawImage(backgroundImg, 0, 0);
-
-        console.log('[CanvasEditor] 📏 Background dimensions:', {
-          canvasWidth: canvas.width,
-          canvasHeight: canvas.height,
-          bgCanvasWidth: bgCanvas.width,
-          bgCanvasHeight: bgCanvas.height,
-          naturalWidth: backgroundImg.naturalWidth,
-          naturalHeight: backgroundImg.naturalHeight,
-        });
-
-        // 스케일 factor 계산 (region bbox는 Fabric canvas 좌표계)
-        const scaleX = bgCanvas.width / (canvas.width || 1);
-        const scaleY = bgCanvas.height / (canvas.height || 1);
-
-        console.log('[CanvasEditor] 📐 Scale factors:', { scaleX, scaleY });
-
-        // 좌표계 변환된 textRegions 생성
-        // Separate regions by confidence:
-        // - maskRegions (conf>=15): for background baking (more coverage, removes low-conf artifacts)
-        // - editableRegions (conf>=60): for Fabric text objects (high quality only)
-        const maskRegions = textRegions.filter((r) => r.confidence >= 15);
-        const editableRegions = textRegions.filter((r) => r.confidence >= 60);
-
-        console.log('[CanvasEditor] Region separation:', {
-          total: textRegions.length,
-          maskRegions: maskRegions.length,
-          editableRegions: editableRegions.length,
-        });
-
-        const scaledMaskRegions = maskRegions.map((region) => ({
-          ...region,
-          position: {
-            x: region.position.x * scaleX,
-            y: region.position.y * scaleY,
-          },
-          size: {
-            width: region.size.width * scaleX,
-            height: region.size.height * scaleY,
-          },
-        }));
-
-        const scaledEditableRegions = editableRegions.map((region) => ({
-          ...region,
-          position: {
-            x: region.position.x * scaleX,
-            y: region.position.y * scaleY,
-          },
-          size: {
-            width: region.size.width * scaleX,
-            height: region.size.height * scaleY,
-          },
-        }));
-
-        // Step 2: Bake MASK regions into background (conf>=15, more coverage)
-        console.log('[CanvasEditor] 🔥 Baking', scaledMaskRegions.length, 'mask regions to background...');
-        const bakedBackground = await bakeTextMasksToBackground(bgCanvas, scaledMaskRegions, {
-          method: 'smart',
-        });
-
-        if (!isMounted) return;
-
-        // Step 3: Set baked background as canvas background
-        console.log('[CanvasEditor] Setting baked background as canvas background');
-        const bakedDataUrl = bakedBackground.toDataURL();
-
-        console.log('[CanvasEditor] 🖼️ Baked background dataURL length:', bakedDataUrl.length);
-
-        canvas.setBackgroundImage(
-          bakedDataUrl,
-          () => {
+        // 1. 배경 이미지 로드 및 추가
+        fabric.Image.fromURL(
+          imageUrl,
+          (img) => {
             if (!isMounted) return;
 
-            canvas.renderAll();
-            console.log('[CanvasEditor] ✅ Baked background set');
-
-            // 디버그: 현재 캔버스 오브젝트 타입 출력
-            const objectTypes = canvas.getObjects().map((o: any) => o.type);
-            console.log('[CanvasEditor] 🔍 Canvas objects before adding text:', objectTypes);
-
-            // Step 4: Add only EDITABLE text objects (conf>=60, high quality only!)
-            console.log('[CanvasEditor] Adding', editableRegions.length, 'editable text objects');
-            editableRegions.forEach((region, index) => {
-              if (index < 3) {
-                console.log(`[CanvasEditor] Adding editable text ${index} (conf=${region.confidence.toFixed(1)}%):`, {
-                  text: region.text.substring(0, 30),
-                  position: region.position,
-                  fontSize: region.style.fontSize,
-                });
-              }
-
-              const textObj = new fabric.IText(region.text, {
-                left: region.position.x,
-                top: region.position.y,
-                fontSize: region.style.fontSize || 16,
-                fontFamily: region.style.fontFamily || 'Pretendard, sans-serif',
-                fill: region.style.color || '#000000',
-                fontWeight: region.style.fontWeight || 'normal',
-                fontStyle: region.style.fontStyle || 'normal',
-                angle: region.style.rotation || 0,
-                selectable: true,
-                editable: true,
-              });
-
-              // Metadata for tracking
-              (textObj as any).regionId = region.id;
-              (textObj as any).layerName = 'editable-text';
-
-              canvas.add(textObj);
+            img.set({
+              left: 0,
+              top: 0,
+              scaleX: scaleX,
+              scaleY: scaleY,
+              selectable: false,
+              evented: false,
+              opacity: 0.35,
             });
 
-            canvas.renderAll();
+            (img as any).layerName = 'background-image';
+            canvas.add(img);
+            canvas.sendToBack(img);
 
-            // Resume history tracking after setup is complete
-            if (historyRef.current) {
-              historyRef.current.endProgrammaticUpdate();
-            }
+            // 2. objectLayers 렌더링
+            let objectsAdded = 0;
+            const objectPromises = objectLayers.map((obj) => {
+              return new Promise<void>((resolve) => {
+                fabric.Image.fromURL(
+                  obj.pngDataUrl,
+                  (objImg) => {
+                    if (!isMounted) {
+                      resolve();
+                      return;
+                    }
 
-            // 디버그: 최종 캔버스 오브젝트 타입 출력
-            const finalObjectTypes = canvas.getObjects().map((o: any) => o.type);
-            console.log('[CanvasEditor] 🔍 Final canvas objects:', finalObjectTypes);
-            console.log('[CanvasEditor] ✅ Text objects added. Total objects:', canvas.getObjects().length);
-            console.log('[CanvasEditor] 🎉 Background baking complete - NO MASK/IMAGE OBJECTS!');
+                    const scaledLeft = obj.x * scaleX;
+                    const scaledTop = obj.y * scaleY;
+                    const scaledWidth = obj.width * scaleX;
+                    const scaledHeight = obj.height * scaleY;
+
+                    objImg.set({
+                      left: scaledLeft,
+                      top: scaledTop,
+                      scaleX: scaledWidth / (objImg.width || 1),
+                      scaleY: scaledHeight / (objImg.height || 1),
+                      selectable: true,
+                      evented: true,
+                    });
+
+                    (objImg as any).layerName = 'object-layer';
+                    (objImg as any).objectId = obj.id;
+                    canvas.add(objImg);
+                    objectsAdded++;
+                    resolve();
+                  },
+                  { crossOrigin: 'anonymous' }
+                );
+              });
+            });
+
+            Promise.all(objectPromises).then(() => {
+              if (!isMounted) return;
+
+              // 3. textRegions 렌더링
+              const editableRegions = textRegions.filter((r) => r.confidence >= 60);
+
+              editableRegions.forEach((region) => {
+                const scaledLeft = region.position.x * scaleX;
+                const scaledTop = region.position.y * scaleY;
+                const scaledWidth = region.size.width * scaleX;
+                const scaledHeight = region.size.height * scaleY;
+
+                // 배경 박스
+                const bgRect = new fabric.Rect({
+                  left: scaledLeft,
+                  top: scaledTop,
+                  width: scaledWidth,
+                  height: scaledHeight,
+                  fill: 'rgba(255, 255, 255, 0.8)',
+                  selectable: false,
+                  evented: false,
+                });
+
+                (bgRect as any).layerName = 'text-bg';
+                (bgRect as any).regionId = region.id;
+                canvas.add(bgRect);
+
+                // 텍스트 객체
+                const scaledFontSize = Math.max(10, Math.min(96, (region.style.fontSize || 16) * scaleY));
+
+                const textObj = new fabric.IText(region.text, {
+                  left: scaledLeft,
+                  top: scaledTop,
+                  fontSize: scaledFontSize,
+                  fontFamily: region.style.fontFamily || 'Pretendard, sans-serif',
+                  fill: region.style.color || '#000000',
+                  fontWeight: region.style.fontWeight || 'normal',
+                  fontStyle: region.style.fontStyle || 'normal',
+                  angle: region.style.rotation || 0,
+                  selectable: true,
+                  editable: true,
+                });
+
+                (textObj as any).layerName = 'editable-text';
+                (textObj as any).regionId = region.id;
+                canvas.add(textObj);
+              });
+
+              console.log(`[Layer] render objects=${objectLayers.length} texts=${editableRegions.length}`);
+              console.log(`[Layer] done objectsOnCanvas=${objectsAdded}`);
+
+              canvas.renderAll();
+              setIsLoading(false);
+
+              if (historyRef.current) {
+                historyRef.current.endProgrammaticUpdate();
+              }
+            });
           },
-          {
-            crossOrigin: 'anonymous',
-          }
+          { crossOrigin: 'anonymous' }
         );
       } catch (error) {
-        console.error('[CanvasEditor] Failed to render with background baking:', error);
+        console.error('[CanvasEditor] Failed to render layers:', error);
+        setIsLoading(false);
 
-        // Resume history tracking even on error
         if (historyRef.current) {
           historyRef.current.endProgrammaticUpdate();
         }
       }
     };
 
-    renderWithBaking();
+    renderLayers();
 
     return () => {
       isMounted = false;
     };
-  }, [canvas, backgroundImg, textRegions]);
+  }, [canvas, imageUrl, imageWidth, imageHeight, textRegions, objectLayers]);
 
   // 텍스트 선택 이벤트
   useEffect(() => {
@@ -332,7 +246,7 @@ export function CanvasEditor({
     };
   }, [canvas, onTextSelect]);
 
-  // 텍스트 수정 이벤트 (편집 완료 시에만)
+  // 텍스트 수정 이벤트
   useEffect(() => {
     if (!canvas || !onTextUpdate) return;
 
@@ -343,7 +257,6 @@ export function CanvasEditor({
       }
     };
 
-    // 편집이 끝날 때만 업데이트 (편집 중에는 업데이트하지 않음)
     canvas.on('text:editing:exited', handleTextChange);
 
     return () => {

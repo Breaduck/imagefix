@@ -10,9 +10,11 @@ import { CanvasEditor } from '@/components/organisms/CanvasEditor';
 import { TextSidebar } from '@/components/organisms/TextSidebar';
 import { TextStyleControls } from '@/components/molecules/TextStyleControls';
 import { ToolPanel } from '@/components/organisms/ToolPanel';
-import { TextRegion } from '@/types/canvas.types';
+import { TextRegion, ObjectLayer } from '@/types/canvas.types';
 import { useExport } from '@/hooks/useExport';
+import { useLayerExtraction } from '@/hooks/useLayerExtraction';
 import { CanvasHistory } from '@/lib/canvas/history-manager';
+import { LoadingSpinner } from '@/components/atoms/LoadingSpinner';
 
 export interface EditorLayoutProps {
   imageUrl: string;
@@ -43,6 +45,7 @@ export function EditorLayout({
   const [textRegions, setTextRegions] = useState<TextRegion[]>(initialTextRegions);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const [objectLayers, setObjectLayers] = useState<ObjectLayer[]>([]);
   const historyRef = useRef<CanvasHistory | null>(null);
 
   const canvasRefCallback = useCallback((fabricCanvas: fabric.Canvas | null) => {
@@ -54,6 +57,7 @@ export function EditorLayout({
   }, []);
 
   const { exportAsPNG, exportAsJPEG, copyToClipboard, isClipboardAvailable } = useExport();
+  const { isProcessing: isExtractingLayers, extractLayers, error: extractionError, result: extractionResult } = useLayerExtraction();
 
   const selectedRegion = textRegions.find((r) => r.id === selectedRegionId) || null;
 
@@ -172,6 +176,41 @@ export function EditorLayout({
     }
   }, []);
 
+  // 레이어 추출 핸들러
+  const handleExtractLayers = useCallback(async () => {
+    if (!imageUrl) {
+      alert('이미지가 로드되지 않았습니다.');
+      return;
+    }
+
+    try {
+      console.log('[EditorLayout] Starting layer extraction');
+      console.log('[EditorLayout] Image URL length:', imageUrl.length);
+
+      const result = await extractLayers(imageUrl, imageWidth, imageHeight);
+
+      console.log('[EditorLayout] ✅ Extraction complete:', {
+        textCount: result.stats.textCount,
+        objectCount: result.stats.objectCount,
+        reason: result.stats.reason,
+      });
+
+      // 추출된 레이어를 state에 저장
+      setObjectLayers(result.objectLayers);
+      setTextRegions(result.textLayers);
+
+      // Show appropriate message based on result
+      if (result.stats.reason === 'SEGMENTER_NOT_CONFIGURED') {
+        alert(`레이어 추출 완료!\n\n텍스트: ${result.stats.textCount}개\n객체: ${result.stats.objectCount}개 (세그멘테이션 서버 미설정)\n\n텍스트 위치 정렬만 확인하세요.`);
+      } else {
+        alert(`레이어 추출 완료!\n\n텍스트: ${result.stats.textCount}개\n객체: ${result.stats.objectCount}개`);
+      }
+    } catch (error) {
+      console.error('[EditorLayout] Layer extraction failed:', error);
+      alert('레이어 추출에 실패했습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
+    }
+  }, [imageUrl, imageWidth, imageHeight, extractLayers]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       {/* Tool Panel */}
@@ -184,6 +223,41 @@ export function EditorLayout({
         onRerunOCR={onRerunOCR}
         disabled={!canvas}
       />
+
+      {/* Layer Extraction Button */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-b border-purple-200 dark:border-purple-800 px-4 py-3">
+        <div className="flex items-center justify-center space-x-4">
+          <button
+            onClick={handleExtractLayers}
+            disabled={isExtractingLayers}
+            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          >
+            {isExtractingLayers ? (
+              <span className="flex items-center space-x-2">
+                <LoadingSpinner />
+                <span>레이어 추출 중...</span>
+              </span>
+            ) : (
+              '🎨 레이어 추출 (텍스트 + 객체)'
+            )}
+          </button>
+          {extractionResult && extractionResult.stats.reason === 'SEGMENTER_NOT_CONFIGURED' && (
+            <div className="px-4 py-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded-lg font-medium">
+              ⚠️ 세그멘테이션 서버 미설정: 객체는 0개가 정상입니다. (텍스트 정렬만 확인하세요)
+            </div>
+          )}
+          {extractionResult && !extractionResult.stats.reason && objectLayers.length > 0 && (
+            <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-lg font-medium">
+              ✅ 추출 완료: 텍스트 {textRegions.length}개, 객체 {objectLayers.length}개
+            </div>
+          )}
+          {extractionError && (
+            <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-lg font-medium">
+              ❌ 오류: {extractionError}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Slide Navigation (if multi-slide) */}
       {totalSlides && totalSlides > 1 && currentSlide !== undefined && (
@@ -231,6 +305,7 @@ export function EditorLayout({
             imageWidth={imageWidth}
             imageHeight={imageHeight}
             textRegions={textRegions}
+            objectLayers={objectLayers.length > 0 ? objectLayers : undefined}
             onTextSelect={handleTextSelect}
             onTextUpdate={handleTextUpdate}
             onCanvasReady={canvasRefCallback}
