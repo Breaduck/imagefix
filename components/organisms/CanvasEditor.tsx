@@ -37,6 +37,14 @@ export function CanvasEditor({
   const [isLoading, setIsLoading] = useState(true);
   const historyRef = useRef<CanvasHistory | null>(null);
 
+  // Track latest values without triggering re-renders
+  const textRegionsRef = useRef(textRegions);
+  const objectLayersRef = useRef(objectLayers);
+
+  // Update refs when props change
+  textRegionsRef.current = textRegions;
+  objectLayersRef.current = objectLayers;
+
   // Canvas ready callback
   useEffect(() => {
     if (canvas && isReady && onCanvasReady) {
@@ -103,9 +111,9 @@ export function CanvasEditor({
             canvas.add(img);
             canvas.sendToBack(img);
 
-            // 2. objectLayers 렌더링
+            // 2. objectLayers 렌더링 (use ref for latest value)
             let objectsAdded = 0;
-            const objectPromises = objectLayers.map((obj) => {
+            const objectPromises = objectLayersRef.current.map((obj) => {
               return new Promise<void>((resolve) => {
                 fabric.Image.fromURL(
                   obj.pngDataUrl,
@@ -143,8 +151,8 @@ export function CanvasEditor({
             Promise.all(objectPromises).then(() => {
               if (!isMounted) return;
 
-              // 3. textRegions 렌더링
-              const editableRegions = textRegions.filter((r) => r.confidence >= 60);
+              // 3. textRegions 렌더링 (use ref for latest value)
+              const editableRegions = textRegionsRef.current.filter((r) => r.confidence >= 60);
 
               editableRegions.forEach((region) => {
                 const scaledLeft = region.position.x * scaleX;
@@ -188,7 +196,7 @@ export function CanvasEditor({
                 canvas.add(textObj);
               });
 
-              console.log(`[Layer] render objects=${objectLayers.length} texts=${editableRegions.length}`);
+              console.log(`[Layer] render objects=${objectLayersRef.current.length} texts=${editableRegions.length}`);
               console.log(`[Layer] done objectsOnCanvas=${objectsAdded}`);
 
               canvas.renderAll();
@@ -216,7 +224,9 @@ export function CanvasEditor({
     return () => {
       isMounted = false;
     };
-  }, [canvas, imageUrl, imageWidth, imageHeight, textRegions, objectLayers]);
+    // Only re-render when canvas or imageUrl changes
+    // textRegions and objectLayers are tracked via refs to prevent infinite loops
+  }, [canvas, imageUrl, imageWidth, imageHeight]);
 
   // 텍스트 선택 이벤트
   useEffect(() => {
