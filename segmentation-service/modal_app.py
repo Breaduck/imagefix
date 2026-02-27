@@ -9,12 +9,13 @@ import time
 from typing import List, Optional
 import modal
 
-# Define Modal stub
-stub = modal.App("sam2-segmentation")
+# Define Modal app
+app = modal.App("sam2-segmentation")
 
 # Define container image with SAM2 and dependencies
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git")
     .pip_install(
         "torch==2.5.1",
         "torchvision==0.20.1",
@@ -33,7 +34,7 @@ CHECKPOINT_PATH = "/checkpoints/sam2.1_hiera_large.pt"
 CONFIG_DIR = "/root/.sam2"
 
 
-@stub.function(
+@app.function(
     image=image,
     gpu="A10G",
     volumes={"/checkpoints": volume},
@@ -58,12 +59,12 @@ def download_checkpoint():
     print(f"[SAM2] Checkpoint downloaded to {CHECKPOINT_PATH}")
 
 
-@stub.function(
+@app.function(
     image=image,
     gpu="A10G",
     volumes={"/checkpoints": volume},
     timeout=600,
-    container_idle_timeout=300,
+    scaledown_window=300,
 )
 @modal.web_endpoint(method="POST")
 def extract(request_data: dict):
@@ -245,7 +246,7 @@ def extract(request_data: dict):
         return {"error": str(e), "objectLayers": [], "stats": {}}, 500
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def main():
     """Deploy and get URL"""
     print("Downloading checkpoint...")

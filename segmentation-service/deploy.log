@@ -1,0 +1,16 @@
+C:\Users\hiyoo\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\modal\_utils\async_utils.py:45: DeprecationWarning: 'asyncio.WindowsSelectorEventLoopPolicy' is deprecated and slated for removal in Python 3.16
+  asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+C:\Users\hiyoo\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\modal\_utils\async_utils.py:45: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+  asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
++- Modal Deprecation Warning (2025-03-05) ------------------------------------+
+| The `@modal.web_endpoint` decorator has been renamed to                     |
+| `@modal.fastapi_endpoint`.                                                  |
+|                                                                             |
+| Source: C:\Users\hiyoo\코딩\이미지                                          |
+| 백터화\imagefix\segmentation-service\modal_app.py:69                        |
+|   @modal.web_endpoint(method="POST")                                        |
++-----------------------------------------------------------------------------+
++- Error ---------------------------------------------------------------------+
+| 'cp949' codec can't encode character '\u2713' in position 0: illegal        |
+| multibyte sequence                                                          |
++-----------------------------------------------------------------------------+
