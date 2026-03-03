@@ -351,7 +351,7 @@ export default function Home() {
           <div className="max-w-4xl mx-auto">
             {/* Header */}
             <header className="mb-8 text-center">
-              <h1 className="text-4xl font-bold mb-4">NotebookLM 텍스트 편집기</h1>
+              <h1 className="text-4xl font-bold mb-4">Imagefix</h1>
               <p className="text-gray-600 dark:text-gray-400">
                 이미지에서 텍스트를 추출하고 편집할 수 있는 웹 애플리케이션
               </p>

@@ -2,7 +2,7 @@
  * 앱 전역 상수
  */
 
-export const APP_NAME = 'NotebookLM 텍스트 편집기';
+export const APP_NAME = 'Imagefix';
 
 export const MAX_IMAGE_SIZE = 4096; // 최대 이미지 크기 (px)
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
