@@ -100,7 +100,13 @@ export function EditorLayout({
         if (style.underline !== undefined) textObject.set({ underline: style.underline });
         if (style.align !== undefined) textObject.set({ textAlign: style.align });
 
+        textObject.setCoords();
         canvas.renderAll();
+
+        // Save to history
+        if (historyRef.current) {
+          historyRef.current.saveState();
+        }
       }
     },
     [selectedRegionId, canvas]
@@ -198,18 +204,17 @@ export function EditorLayout({
       // 추출된 레이어를 state에 저장
       setObjectLayers(result.objectLayers);
       setTextRegions(result.textLayers);
-
-      // Show appropriate message based on result
-      if (result.stats.reason === 'SEGMENTER_NOT_CONFIGURED') {
-        alert(`레이어 추출 완료!\n\n텍스트: ${result.stats.textCount}개\n객체: ${result.stats.objectCount}개 (세그멘테이션 서버 미설정)\n\n텍스트 위치 정렬만 확인하세요.`);
-      } else {
-        alert(`레이어 추출 완료!\n\n텍스트: ${result.stats.textCount}개\n객체: ${result.stats.objectCount}개`);
-      }
     } catch (error) {
       console.error('[EditorLayout] Layer extraction failed:', error);
-      alert('레이어 추출에 실패했습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
   }, [imageUrl, imageWidth, imageHeight, extractLayers]);
+
+  // Auto-extract layers on mount
+  useEffect(() => {
+    if (imageUrl && !extractionResult && !isExtractingLayers) {
+      handleExtractLayers();
+    }
+  }, [imageUrl, extractionResult, isExtractingLayers, handleExtractLayers]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
