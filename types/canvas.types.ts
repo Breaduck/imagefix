@@ -66,5 +66,6 @@ export interface LayerExtractionResult {
     objectCount: number;
     processingTimeMs: number;
     reason?: string; // Optional reason (e.g., SEGMENTER_NOT_CONFIGURED, SEGMENTER_BAD_RESPONSE)
+    code?: string; // Optional code (e.g., WARMING_UP)
   };
 }

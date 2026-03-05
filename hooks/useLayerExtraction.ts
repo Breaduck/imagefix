@@ -47,9 +47,13 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
       setError(null);
       setResult(null);
 
+      // 90s hard timeout for whole operation
+      const operationController = new AbortController();
+      const operationTimeoutId = setTimeout(() => operationController.abort(), 90000);
+
       try {
-        // Resize large images before sending to API to prevent timeout
-        const MAX_DIMENSION = 2048;
+        // Resize large images to 1280px max with JPEG compression
+        const MAX_DIMENSION = 1280;
         let resizedDataUrl = slidePngDataUrl;
         let resizedWidth = imageWidth;
         let resizedHeight = imageHeight;
@@ -78,7 +82,8 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
           }
 
           ctx.drawImage(img, 0, 0, resizedWidth, resizedHeight);
-          resizedDataUrl = canvas.toDataURL('image/png');
+          // Use JPEG with 0.85 quality to reduce payload
+          resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
           console.log('[useLayerExtraction] Resized to:', resizedWidth, 'x', resizedHeight);
           console.log('[useLayerExtraction] DataURL length reduced:', slidePngDataUrl.length, '->', resizedDataUrl.length);
@@ -86,56 +91,90 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
           console.log('[useLayerExtraction] Image size OK, no resize needed');
         }
 
-        // API 호출 (타임아웃 120초)
         setProgress(10);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-        const response = await fetch('/api/extractLayers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            slidePngDataUrl: resizedDataUrl,
-            imageWidth: resizedWidth,
-            imageHeight: resizedHeight,
-            originalWidth: imageWidth,
-            originalHeight: imageHeight,
-            provider,
-          }),
-          signal: controller.signal,
-        });
+        // Auto-retry logic for WARMING_UP (max 3 attempts)
+        const MAX_RETRIES = 3;
+        let retryCount = 0;
+        let extractionResult: LayerExtractionResult | null = null;
 
-        clearTimeout(timeoutId);
-
-        setProgress(50);
-
-        if (!response.ok) {
-          // Handle 504 Gateway Timeout specifically
-          if (response.status === 504) {
-            throw new Error('처리 시간이 초과되었습니다. 이미지 크기를 줄이거나 나중에 다시 시도해주세요.');
+        while (retryCount < MAX_RETRIES) {
+          if (operationController.signal.aborted) {
+            throw new Error('AbortError');
           }
 
-          // Try to parse JSON error, fallback to status text
-          let errorMessage = 'Layer extraction failed';
           try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } catch {
-            // Response is not JSON, use status text
-            errorMessage = `서버 오류 (${response.status}): ${response.statusText}`;
+            const response = await fetch('/api/extractLayers', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                slidePngDataUrl: resizedDataUrl,
+                imageWidth: resizedWidth,
+                imageHeight: resizedHeight,
+                originalWidth: imageWidth,
+                originalHeight: imageHeight,
+                provider,
+              }),
+              signal: operationController.signal,
+            });
+
+            setProgress(50);
+
+            if (!response.ok) {
+              // Handle 504 Gateway Timeout specifically
+              if (response.status === 504) {
+                throw new Error('처리 시간이 초과되었습니다. 이미지 크기를 줄이거나 나중에 다시 시도해주세요.');
+              }
+
+              // Try to parse JSON error, fallback to status text
+              let errorMessage = 'Layer extraction failed';
+              try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+              } catch {
+                // Response is not JSON, use status text
+                errorMessage = `서버 오류 (${response.status}): ${response.statusText}`;
+              }
+              throw new Error(errorMessage);
+            }
+
+            // Parse response with error handling for non-JSON responses
+            try {
+              extractionResult = await response.json();
+            } catch (jsonError) {
+              console.error('[useLayerExtraction] Failed to parse response as JSON:', jsonError);
+              throw new Error('서버 응답 형식이 올바르지 않습니다. 다시 시도해주세요.');
+            }
+
+            // Check if model is warming up
+            if (extractionResult?.stats?.code === 'WARMING_UP') {
+              retryCount++;
+              console.log(`[useLayerExtraction] Model warming up, retry ${retryCount}/${MAX_RETRIES}`);
+
+              if (retryCount < MAX_RETRIES) {
+                // Wait 30s before retry
+                await new Promise((resolve) => setTimeout(resolve, 30000));
+                continue;
+              } else {
+                throw new Error('모델 로딩 시간 초과. 잠시 후 다시 시도해주세요.');
+              }
+            }
+
+            // Success - break out of retry loop
+            break;
+
+          } catch (err) {
+            // Only retry on WARMING_UP, not on other errors
+            if (retryCount === 0 || !(err instanceof Error && err.message.includes('warming up'))) {
+              throw err;
+            }
           }
-          throw new Error(errorMessage);
         }
 
-        // Parse response with error handling for non-JSON responses
-        let extractionResult: LayerExtractionResult;
-        try {
-          extractionResult = await response.json();
-        } catch (jsonError) {
-          console.error('[useLayerExtraction] Failed to parse response as JSON:', jsonError);
-          throw new Error('서버 응답 형식이 올바르지 않습니다. 다시 시도해주세요.');
+        if (!extractionResult) {
+          throw new Error('레이어 추출에 실패했습니다.');
         }
 
         console.log('[useLayerExtraction] ✅ Extraction complete:', {
@@ -182,14 +221,15 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
         setProgress(100);
         setResult(extractionResult);
 
+        clearTimeout(operationTimeoutId);
         return extractionResult;
 
       } catch (err) {
         let errorMessage = 'Layer extraction failed';
 
         if (err instanceof Error) {
-          if (err.name === 'AbortError') {
-            errorMessage = '레이어 추출 시간 초과 (2분). 이미지가 너무 크거나 서버가 응답하지 않습니다.';
+          if (err.name === 'AbortError' || err.message === 'AbortError') {
+            errorMessage = '레이어 추출 시간 초과 (90초). 이미지가 너무 크거나 서버가 응답하지 않습니다.';
           } else {
             errorMessage = err.message;
           }
@@ -199,6 +239,7 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
         setError(errorMessage);
         throw err;
       } finally {
+        clearTimeout(operationTimeoutId);
         setIsProcessing(false);
       }
     },

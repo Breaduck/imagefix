@@ -9,6 +9,8 @@ import { TextRegion, ObjectLayer, LayerExtractionResult } from '@/types/canvas.t
 import { convertOCRResultsToTextRegions, filterByConfidence, sortTextRegions } from '@/lib/ocr/text-detector';
 import { createOCRProvider } from '@/lib/ocr/providers';
 
+export const maxDuration = 60;
+
 /**
  * Call external segmentation server to extract object layers
  */
@@ -16,7 +18,7 @@ async function extractObjectLayers(
   imagePngDataUrl: string,
   textMaskBoxes: Array<{ x: number; y: number; width: number; height: number }>,
   opts?: Record<string, any>
-): Promise<{ objectLayers: ObjectLayer[]; reason?: string }> {
+): Promise<{ objectLayers: ObjectLayer[]; reason?: string; code?: string }> {
   const SEGMENTER_URL = process.env.SEGMENTER_URL;
   const SEGMENTER_TOKEN = process.env.SEGMENTER_TOKEN;
 
@@ -26,6 +28,31 @@ async function extractObjectLayers(
   }
 
   try {
+    // Step 1: Check health first
+    console.log('[ExtractLayers] Checking segmenter health...');
+    const healthResponse = await fetch(`${SEGMENTER_URL}/health`, {
+      method: 'GET',
+    });
+
+    if (!healthResponse.ok) {
+      console.error('[ExtractLayers] Health check failed:', healthResponse.status);
+      return { objectLayers: [], reason: 'SEGMENTER_UNHEALTHY' };
+    }
+
+    const healthData = await healthResponse.json();
+    console.log('[ExtractLayers] Health check:', healthData);
+
+    // If model not loaded, return WARMING_UP
+    if (!healthData.modelLoaded) {
+      console.log('[ExtractLayers] Model not loaded, returning WARMING_UP');
+      return {
+        objectLayers: [],
+        reason: 'Model is loading, please retry in 30 seconds',
+        code: 'WARMING_UP',
+      };
+    }
+
+    // Step 2: Call extract endpoint with timeout
     console.log('[ExtractLayers] Calling segmenter at:', SEGMENTER_URL);
     console.log('[ExtractLayers] textMaskBoxes count:', textMaskBoxes.length);
 
@@ -37,17 +64,36 @@ async function extractObjectLayers(
       headers['Authorization'] = `Bearer ${SEGMENTER_TOKEN}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch(`${SEGMENTER_URL}/extract`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        imagePngDataUrl,
+        imagePngBase64: imagePngDataUrl,
         textMaskBoxes,
         opts,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
+      // Check if it's WARMING_UP status
+      if (response.status === 503) {
+        const errorData = await response.json();
+        if (errorData.code === 'WARMING_UP') {
+          console.log('[ExtractLayers] Model warming up, returning WARMING_UP');
+          return {
+            objectLayers: [],
+            reason: errorData.message || 'Model is loading',
+            code: 'WARMING_UP',
+          };
+        }
+      }
+
       console.error('[ExtractLayers] Segmenter returned error:', response.status);
       return { objectLayers: [], reason: 'SEGMENTER_BAD_RESPONSE' };
     }
@@ -64,6 +110,10 @@ async function extractObjectLayers(
     return { objectLayers: data.objectLayers };
 
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[ExtractLayers] Segmenter timeout (60s)');
+      return { objectLayers: [], reason: 'SEGMENTER_TIMEOUT' };
+    }
     console.error('[ExtractLayers] Segmenter call failed:', error);
     return { objectLayers: [], reason: 'SEGMENTER_BAD_RESPONSE' };
   }
@@ -137,7 +187,7 @@ export async function POST(request: NextRequest) {
       height: region.size.height,
     }));
 
-    const { objectLayers, reason } = await extractObjectLayers(
+    const { objectLayers, reason, code } = await extractObjectLayers(
       slidePngDataUrl,
       textMaskBoxes,
       {
@@ -163,6 +213,7 @@ export async function POST(request: NextRequest) {
         objectCount: objectLayers.length,
         processingTimeMs,
         ...(reason && { reason }),
+        ...(code && { code }),
       } as any,
     };
 
@@ -171,6 +222,7 @@ export async function POST(request: NextRequest) {
       objectCount: result.stats.objectCount,
       timeMs: processingTimeMs,
       reason: reason || 'none',
+      code: code || 'none',
     });
 
     return NextResponse.json(result);
