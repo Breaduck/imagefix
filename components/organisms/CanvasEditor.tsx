@@ -286,10 +286,11 @@ export function CanvasEditor({
           <p className="text-gray-500">이미지 로딩 중...</p>
         </div>
       )}
-      <div suppressHydrationWarning>
+      <div suppressHydrationWarning style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
         <canvas
           ref={canvasRef}
           className="border border-gray-300 rounded-lg shadow-sm"
+          style={{ maxWidth: '100%', height: 'auto' }}
           suppressHydrationWarning
         />
       </div>

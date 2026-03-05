@@ -300,17 +300,19 @@ export function EditorLayout({
 
         {/* Canvas Area */}
         <div className="flex-1 overflow-auto p-8 flex items-center justify-center">
-          <CanvasEditor
-            imageUrl={imageUrl}
-            imageWidth={imageWidth}
-            imageHeight={imageHeight}
-            textRegions={textRegions}
-            objectLayers={objectLayers.length > 0 ? objectLayers : undefined}
-            onTextSelect={handleTextSelect}
-            onTextUpdate={handleTextUpdate}
-            onCanvasReady={canvasRefCallback}
-            onHistoryReady={historyRefCallback}
-          />
+          <div className="max-w-full max-h-full">
+            <CanvasEditor
+              imageUrl={imageUrl}
+              imageWidth={imageWidth}
+              imageHeight={imageHeight}
+              textRegions={textRegions}
+              objectLayers={objectLayers.length > 0 ? objectLayers : undefined}
+              onTextSelect={handleTextSelect}
+              onTextUpdate={handleTextUpdate}
+              onCanvasReady={canvasRefCallback}
+              onHistoryReady={historyRefCallback}
+            />
+          </div>
         </div>
 
         {/* Right Sidebar */}
