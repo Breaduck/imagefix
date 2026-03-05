@@ -86,8 +86,11 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
           console.log('[useLayerExtraction] Image size OK, no resize needed');
         }
 
-        // API 호출
+        // API 호출 (타임아웃 120초)
         setProgress(10);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+
         const response = await fetch('/api/extractLayers', {
           method: 'POST',
           headers: {
@@ -101,7 +104,10 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
             originalHeight: imageHeight,
             provider,
           }),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         setProgress(50);
 
@@ -179,7 +185,16 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
         return extractionResult;
 
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Layer extraction failed';
+        let errorMessage = 'Layer extraction failed';
+
+        if (err instanceof Error) {
+          if (err.name === 'AbortError') {
+            errorMessage = '레이어 추출 시간 초과 (2분). 이미지가 너무 크거나 서버가 응답하지 않습니다.';
+          } else {
+            errorMessage = err.message;
+          }
+        }
+
         console.error('[useLayerExtraction] Error:', err);
         setError(errorMessage);
         throw err;
