@@ -204,12 +204,12 @@ export function EditorLayout({
     }
   }, [imageUrl, imageWidth, imageHeight, extractLayers]);
 
-  // Auto-extract layers on mount (disabled due to slow SAM2)
-  // useEffect(() => {
-  //   if (imageUrl && !extractionResult && !isExtractingLayers) {
-  //     handleExtractLayers();
-  //   }
-  // }, [imageUrl, extractionResult, isExtractingLayers, handleExtractLayers]);
+  // Auto-extract layers on mount
+  useEffect(() => {
+    if (imageUrl && !extractionResult && !isExtractingLayers) {
+      handleExtractLayers();
+    }
+  }, [imageUrl, extractionResult, isExtractingLayers, handleExtractLayers]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
