@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { fabric } from 'fabric';
 import { CanvasEditor } from '@/components/organisms/CanvasEditor';
 import { TextSidebar } from '@/components/organisms/TextSidebar';
@@ -102,11 +102,6 @@ export function EditorLayout({
 
         textObject.setCoords();
         canvas.renderAll();
-
-        // Save to history
-        if (historyRef.current) {
-          historyRef.current.saveState();
-        }
       }
     },
     [selectedRegionId, canvas]
