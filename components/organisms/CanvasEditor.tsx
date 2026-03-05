@@ -104,7 +104,7 @@ export function CanvasEditor({
               scaleY: scaleY,
               selectable: false,
               evented: false,
-              opacity: 0.35,
+              opacity: 0,
             });
 
             (img as any).layerName = 'background-image';
