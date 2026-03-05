@@ -63,9 +63,61 @@ Add to `.env.local`:
 SEGMENTER_URL=http://localhost:8000
 ```
 
-## API
+## API Endpoints
+
+### GET /health
+
+Health check with detailed status.
+
+**Test:**
+```bash
+curl https://YOUR-WORKSPACE--sam2-segmentation-health.modal.run
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "modelLoaded": true,
+  "checkpointExists": true,
+  "checkpointPath": "/checkpoints/sam2.1_hiera_large.pt",
+  "checkpointFiles": ["sam2.1_hiera_large.pt"],
+  "loading": false,
+  "loadTimeMs": 12450
+}
+```
+
+### POST /warmup
+
+Preload model and checkpoint. First call may take 60-120s.
+
+**Test:**
+```bash
+curl -X POST https://YOUR-WORKSPACE--sam2-segmentation-warmup.modal.run \
+  --max-time 240
+```
+
+**Response (success):**
+```json
+{
+  "warmed": true,
+  "loadMs": 67890,
+  "modelLoadTimeMs": 12450
+}
+```
+
+**Response (already warming):**
+```json
+{
+  "warmed": false,
+  "code": "WARMING_UP",
+  "retryAfterMs": 30000
+}
+```
 
 ### POST /extract
+
+Extract object layers from image using SAM2.
 
 **Request:**
 ```json
@@ -82,7 +134,15 @@ SEGMENTER_URL=http://localhost:8000
 }
 ```
 
-**Response:**
+**Test:**
+```bash
+curl -X POST https://YOUR-WORKSPACE--sam2-segmentation-extract.modal.run \
+  -H "Content-Type: application/json" \
+  -d '{"imagePngBase64":"data:image/png;base64,iVBORw0KG...","textMaskBoxes":[],"opts":{}}' \
+  --max-time 240
+```
+
+**Response (success):**
 ```json
 {
   "objectLayers": [
@@ -103,21 +163,51 @@ SEGMENTER_URL=http://localhost:8000
 }
 ```
 
+**Response (warming up):**
+```json
+{
+  "code": "WARMING_UP",
+  "message": "Model is loading, please retry in 30 seconds",
+  "retryAfterMs": 30000,
+  "objectLayers": [],
+  "stats": {}
+}
+```
+
 ## How It Works
 
-1. **SAM2 Generation**: Automatically segments all objects in image
-2. **Area Filter**: Remove too small (<0.5%) or too large (>80%) masks
-3. **Text Overlap Filter**: Remove masks overlapping text regions (>50%)
-4. **IoU Deduplication**: Merge similar masks (IoU >0.7)
-5. **PNG Export**: Crop each mask to bbox, create transparent RGBA PNG
+1. **Model Loading (once per container)**:
+   - Checkpoint auto-downloaded to Modal volume (~900MB) if missing
+   - Model loaded as singleton on first request
+   - Subsequent requests reuse loaded model
+   - `keep_warm=1` keeps container alive between requests
 
-## Model Details
+2. **SAM2 Generation**: Automatically segments all objects in image
 
-- Model: SAM2.1 Hiera Large
-- Checkpoint: ~900MB, auto-downloaded from Meta
-- Config: `configs/sam2.1/sam2.1_hiera_l.yaml` (from SAM2 repo)
-- GPU: A10G (Modal) or CUDA (local)
-- Inference time: ~2-5s per image on A10G
+3. **Post-processing**:
+   - Area Filter: Remove too small (<0.5%) or too large (>80%) masks
+   - Text Overlap Filter: Remove masks overlapping text regions (>50%)
+   - IoU Deduplication: Merge similar masks (IoU >0.7)
+
+4. **PNG Export**: Crop each mask to bbox, create transparent RGBA PNG
+
+## Performance
+
+- **Cold start** (first request): 60-120s (model load + inference)
+- **Warm requests**: 2-5s (inference only)
+- **Keep warm**: Container stays alive for ~5 minutes after last request
+- **Model**: SAM2.1 Hiera Large (~900MB)
+- **GPU**: A10G on Modal
+- **Inference**: ~2-5s per image on A10G
+
+## Production Features
+
+- **Singleton model loading**: Model loaded once per container, not per request
+- **Health endpoint**: Check model status before sending requests
+- **Warmup endpoint**: Preload model explicitly
+- **Clear error codes**: `WARMING_UP` with `retryAfterMs` during model load
+- **Volume persistence**: Checkpoint cached across deployments
+- **Keep warm**: Faster response for subsequent requests
 
 ## Troubleshooting
 

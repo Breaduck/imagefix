@@ -1,11 +1,12 @@
 """
-SAM2 Segmentation Service - Modal Deployment
-Serverless GPU deployment on modal.com
+SAM2 Segmentation FastAPI Service - Modal Deployment
+Serverless GPU deployment on modal.com with production features
 """
 
 import io
 import base64
 import time
+import os
 from typing import List, Optional
 import modal
 
@@ -31,32 +32,79 @@ image = (
 # Define volume for model checkpoint
 volume = modal.Volume.from_name("sam2-checkpoints", create_if_missing=True)
 CHECKPOINT_PATH = "/checkpoints/sam2.1_hiera_large.pt"
-CONFIG_DIR = "/root/.sam2"
+CHECKPOINT_URL = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
+
+# Global model state (per container)
+_model_state = {
+    "loaded": False,
+    "model": None,
+    "generator": None,
+    "loading": False,
+    "load_time_ms": 0,
+}
 
 
-@app.function(
-    image=image,
-    gpu="A10G",
-    volumes={"/checkpoints": volume},
-    timeout=300,
-)
-def download_checkpoint():
-    """Download SAM2 checkpoint if not exists"""
-    import os
-    import urllib.request
-
+def ensure_checkpoint():
+    """Ensure checkpoint exists, download if needed"""
     if os.path.exists(CHECKPOINT_PATH):
-        print(f"[SAM2] Checkpoint already exists at {CHECKPOINT_PATH}")
-        return
+        print(f"[SAM2] Checkpoint exists: {CHECKPOINT_PATH}")
+        return True
 
-    print("[SAM2] Downloading checkpoint...")
+    print(f"[SAM2] Checkpoint not found, downloading from {CHECKPOINT_URL}...")
     os.makedirs("/checkpoints", exist_ok=True)
 
-    url = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
-    urllib.request.urlretrieve(url, CHECKPOINT_PATH)
+    import urllib.request
+    urllib.request.urlretrieve(CHECKPOINT_URL, CHECKPOINT_PATH)
     volume.commit()
 
-    print(f"[SAM2] Checkpoint downloaded to {CHECKPOINT_PATH}")
+    print(f"[SAM2] Checkpoint downloaded and committed: {CHECKPOINT_PATH}")
+    return True
+
+
+def load_model_once():
+    """Load SAM2 model once per container (singleton)"""
+    global _model_state
+
+    if _model_state["loaded"]:
+        return _model_state["generator"]
+
+    if _model_state["loading"]:
+        raise RuntimeError("Model is currently loading")
+
+    _model_state["loading"] = True
+    start_time = time.time()
+
+    try:
+        import torch
+        from sam2.build_sam import build_sam2
+        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+
+        # Ensure checkpoint exists
+        ensure_checkpoint()
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"[SAM2] Loading model on {device}...")
+
+        sam2_model = build_sam2(
+            config_file="configs/sam2.1/sam2.1_hiera_l.yaml",
+            ckpt_path=CHECKPOINT_PATH,
+            device=device
+        )
+
+        mask_generator = SAM2AutomaticMaskGenerator(sam2_model)
+
+        load_time_ms = int((time.time() - start_time) * 1000)
+
+        _model_state["model"] = sam2_model
+        _model_state["generator"] = mask_generator
+        _model_state["loaded"] = True
+        _model_state["load_time_ms"] = load_time_ms
+
+        print(f"[SAM2] Model loaded successfully in {load_time_ms}ms")
+        return mask_generator
+
+    finally:
+        _model_state["loading"] = False
 
 
 @app.function(
@@ -64,27 +112,91 @@ def download_checkpoint():
     gpu="A10G",
     volumes={"/checkpoints": volume},
     timeout=600,
-    scaledown_window=300,
+    keep_warm=1,
+)
+@modal.web_endpoint(method="GET")
+def health():
+    """Health check endpoint with detailed status"""
+    checkpoint_exists = os.path.exists(CHECKPOINT_PATH)
+
+    # List checkpoint directory for debugging
+    checkpoint_files = []
+    if os.path.exists("/checkpoints"):
+        try:
+            checkpoint_files = os.listdir("/checkpoints")
+        except Exception as e:
+            checkpoint_files = [f"Error: {e}"]
+
+    return {
+        "ok": True,
+        "modelLoaded": _model_state["loaded"],
+        "checkpointExists": checkpoint_exists,
+        "checkpointPath": CHECKPOINT_PATH,
+        "checkpointFiles": checkpoint_files,
+        "loading": _model_state["loading"],
+        "loadTimeMs": _model_state["load_time_ms"] if _model_state["loaded"] else None,
+    }
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    volumes={"/checkpoints": volume},
+    timeout=600,
+    keep_warm=1,
+)
+@modal.web_endpoint(method="POST")
+def warmup():
+    """Warmup endpoint to preload model"""
+    start_time = time.time()
+
+    try:
+        load_model_once()
+        load_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "warmed": True,
+            "loadMs": load_ms,
+            "modelLoadTimeMs": _model_state["load_time_ms"],
+        }
+    except RuntimeError as e:
+        if "currently loading" in str(e):
+            return {
+                "warmed": False,
+                "code": "WARMING_UP",
+                "retryAfterMs": 30000,
+            }, 503
+        raise
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    volumes={"/checkpoints": volume},
+    timeout=600,
+    keep_warm=1,
 )
 @modal.web_endpoint(method="POST")
 def extract(request_data: dict):
     """Extract object layers from image using SAM2"""
     import numpy as np
     from PIL import Image
-    import torch
-    from sam2.build_sam import build_sam2
-    from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-    import os
 
     start_time = time.time()
 
-    # Ensure checkpoint exists
-    if not os.path.exists(CHECKPOINT_PATH):
-        return {
-            "error": "Model checkpoint not found. Run download_checkpoint first.",
-            "objectLayers": [],
-            "stats": {}
-        }, 503
+    # Try to get model, return 503 if loading
+    try:
+        mask_generator = load_model_once()
+    except RuntimeError as e:
+        if "currently loading" in str(e):
+            return {
+                "code": "WARMING_UP",
+                "message": "Model is loading, please retry in 30 seconds",
+                "retryAfterMs": 30000,
+                "objectLayers": [],
+                "stats": {}
+            }, 503
+        raise
 
     # Parse request
     image_png_base64 = request_data.get("imagePngBase64", "")
@@ -107,23 +219,6 @@ def extract(request_data: dict):
         img_array = np.array(img)
 
         print(f"[SAM2] Image size: {img.size}")
-
-        # Load model
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[SAM2] Loading model on {device}...")
-
-        # Create config directory
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-
-        # Build SAM2 model
-        sam2_model = build_sam2(
-            config_file="configs/sam2.1/sam2.1_hiera_l.yaml",
-            ckpt_path=CHECKPOINT_PATH,
-            device=device
-        )
-
-        mask_generator = SAM2AutomaticMaskGenerator(sam2_model)
-        print("[SAM2] Model loaded")
 
         # Generate masks
         print("[SAM2] Generating masks...")
@@ -248,8 +343,10 @@ def extract(request_data: dict):
 
 @app.local_entrypoint()
 def main():
-    """Deploy and get URL"""
-    print("Downloading checkpoint...")
-    download_checkpoint.remote()
-    print("\nDeploy with: modal deploy modal_app.py")
-    print("Your endpoint will be at: https://YOUR-WORKSPACE--sam2-segmentation-extract.modal.run")
+    """Local entrypoint for testing"""
+    print("SAM2 Segmentation Service")
+    print("Deploy with: modal deploy modal_app.py")
+    print("Endpoints:")
+    print("  GET  /health  - Health check")
+    print("  POST /warmup  - Warm up model")
+    print("  POST /extract - Extract objects")
