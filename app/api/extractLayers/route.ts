@@ -1,140 +1,18 @@
 /**
- * Layer Extraction API Route
+ * Text Extraction API Route
  *
- * 슬라이드 이미지에서 텍스트 레이어와 비텍스트 객체 레이어를 추출합니다.
+ * OCR을 사용해 슬라이드 이미지에서 텍스트 레이어만 추출합니다.
+ * 객체 레이어는 /api/extractObjects를 별도로 호출하세요.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { TextRegion, ObjectLayer, LayerExtractionResult } from '@/types/canvas.types';
+import { TextRegion } from '@/types/canvas.types';
 import { convertOCRResultsToTextRegions, filterByConfidence, sortTextRegions } from '@/lib/ocr/text-detector';
 import { createOCRProvider } from '@/lib/ocr/providers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
-
-/**
- * Call external segmentation server to extract object layers
- */
-async function extractObjectLayers(
-  imagePngDataUrl: string,
-  textMaskBoxes: Array<{ x: number; y: number; width: number; height: number }>,
-  opts?: Record<string, any>
-): Promise<{ objectLayers: ObjectLayer[]; reason?: string; code?: string; retryAfterMs?: number }> {
-  const SEGMENTER_URL = process.env.SEGMENTER_URL;
-  const SEGMENTER_TOKEN = process.env.SEGMENTER_TOKEN;
-
-  if (!SEGMENTER_URL) {
-    console.log('[ExtractLayers] SEGMENTER_URL not configured');
-    return { objectLayers: [], reason: 'SEGMENTER_NOT_CONFIGURED' };
-  }
-
-  try {
-    // Step 1: Check health first with 5s timeout
-    console.log('[ExtractLayers] Checking segmenter health...');
-    const healthController = new AbortController();
-    const healthTimeoutId = setTimeout(() => healthController.abort(), 5000);
-
-    const healthResponse = await fetch(`${SEGMENTER_URL}/health`, {
-      method: 'GET',
-      signal: healthController.signal,
-    });
-
-    clearTimeout(healthTimeoutId);
-
-    if (!healthResponse.ok) {
-      console.error('[ExtractLayers] Health check failed:', healthResponse.status);
-      return { objectLayers: [], reason: 'WARMING_UP', code: 'WARMING_UP', retryAfterMs: 30000 };
-    }
-
-    const healthData = await healthResponse.json();
-    console.log('[ExtractLayers] Health check:', healthData);
-
-    // If model not loaded, return WARMING_UP immediately
-    if (!healthData.modelLoaded) {
-      console.log('[ExtractLayers] Model not loaded, returning WARMING_UP');
-      return {
-        objectLayers: [],
-        reason: 'WARMING_UP',
-        code: 'WARMING_UP',
-        retryAfterMs: 30000,
-      };
-    }
-
-    // Step 2: Call extract endpoint with 25s timeout
-    console.log('[ExtractLayers] Calling segmenter extract...');
-    console.log('[ExtractLayers] textMaskBoxes count:', textMaskBoxes.length);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (SEGMENTER_TOKEN) {
-      headers['Authorization'] = `Bearer ${SEGMENTER_TOKEN}`;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
-
-    const response = await fetch(`${SEGMENTER_URL}/extract`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        imagePngBase64: imagePngDataUrl,
-        textMaskBoxes,
-        opts,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.error('[ExtractLayers] Segmenter returned error:', response.status);
-      // Treat any non-OK as warming up to avoid 504
-      return {
-        objectLayers: [],
-        reason: 'WARMING_UP',
-        code: 'WARMING_UP',
-        retryAfterMs: 15000,
-      };
-    }
-
-    const data = await response.json();
-
-    // Validate response shape
-    if (!Array.isArray(data.objectLayers)) {
-      console.error('[ExtractLayers] Invalid segmenter response shape');
-      return {
-        objectLayers: [],
-        reason: 'WARMING_UP',
-        code: 'WARMING_UP',
-        retryAfterMs: 15000,
-      };
-    }
-
-    console.log('[ExtractLayers] Segmenter returned', data.objectLayers.length, 'objects');
-    return { objectLayers: data.objectLayers };
-
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[ExtractLayers] Segmenter timeout, returning WARMING_UP');
-      return {
-        objectLayers: [],
-        reason: 'WARMING_UP',
-        code: 'WARMING_UP',
-        retryAfterMs: 15000,
-      };
-    }
-    console.error('[ExtractLayers] Segmenter call failed:', error);
-    return {
-      objectLayers: [],
-      reason: 'WARMING_UP',
-      code: 'WARMING_UP',
-      retryAfterMs: 15000,
-    };
-  }
-}
+export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -193,10 +71,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[ExtractLayers] After filtering: ${textLayers.length} text layers`);
 
-    // Step 2: 객체 레이어 추출 (segmenter 사용 또는 빈 배열)
-    console.log('[ExtractLayers] Step 2: Extracting object layers');
-
-    // textMaskBoxes 생성 (text regions를 bbox로 변환)
+    // textMaskBoxes 생성 (text regions를 bbox로 변환 - 객체 추출시 사용)
     const textMaskBoxes = textLayers.map((region) => ({
       x: region.position.x,
       y: region.position.y,
@@ -204,46 +79,21 @@ export async function POST(request: NextRequest) {
       height: region.size.height,
     }));
 
-    const { objectLayers, reason, code, retryAfterMs } = await extractObjectLayers(
-      slidePngDataUrl,
-      textMaskBoxes,
-      {
-        minAreaRatio: 0.005,
-        maxAreaRatio: 0.8,
-        iouThreshold: 0.7,
-      }
-    );
-
-    console.log(`[ExtractLayers] Extracted ${objectLayers.length} object layers`);
-    if (reason) {
-      console.log(`[ExtractLayers] Reason: ${reason}, Code: ${code}`);
-    }
-
-    // Step 3: 응답 생성
     const processingTimeMs = Date.now() - startTime;
 
-    const result: LayerExtractionResult = {
-      textLayers,
-      objectLayers,
-      stats: {
-        textCount: textLayers.length,
-        objectCount: objectLayers.length,
-        processingTimeMs,
-        ...(reason && { reason }),
-        ...(code && { code }),
-        ...(retryAfterMs && { retryAfterMs }),
-      } as any,
-    };
-
-    console.log('[ExtractLayers] ✅ Extraction complete:', {
-      textCount: result.stats.textCount,
-      objectCount: result.stats.objectCount,
+    console.log('[ExtractLayers] ✅ Text extraction complete:', {
+      textCount: textLayers.length,
       timeMs: processingTimeMs,
-      reason: reason || 'none',
-      code: code || 'none',
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      textLayers,
+      textMaskBoxes, // 클라이언트가 객체 추출에 사용
+      stats: {
+        textCount: textLayers.length,
+        processingTimeMs,
+      },
+    });
 
   } catch (error) {
     console.error('[ExtractLayers] Error:', error);

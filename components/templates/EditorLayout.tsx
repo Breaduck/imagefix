@@ -57,7 +57,14 @@ export function EditorLayout({
   }, []);
 
   const { exportAsPNG, exportAsJPEG, copyToClipboard, isClipboardAvailable } = useExport();
-  const { isProcessing: isExtractingLayers, extractLayers, error: extractionError, result: extractionResult } = useLayerExtraction();
+  const {
+    isProcessing: isExtractingLayers,
+    isExtractingObjects,
+    extractLayers,
+    error: extractionError,
+    objectError,
+    result: extractionResult
+  } = useLayerExtraction();
 
   const selectedRegion = textRegions.find((r) => r.id === selectedRegionId) || null;
 
@@ -254,6 +261,16 @@ export function EditorLayout({
           {extractionError && (
             <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-lg font-medium">
               ❌ 오류: {extractionError}
+            </div>
+          )}
+          {isExtractingObjects && (
+            <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded-lg font-medium">
+              🔄 객체 추출 중...
+            </div>
+          )}
+          {objectError && !isExtractingObjects && (
+            <div className="px-4 py-2 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 rounded-lg font-medium">
+              ⚠️ 객체 추출 실패: {objectError}
             </div>
           )}
         </div>
