@@ -1,12 +1,13 @@
 /**
  * Layer Extraction Hook
  *
- * 2단계 추출: (1) 텍스트 먼저 (2) 객체 후속
+ * 2단계 추출: (1) 클라이언트 OCR (2) 서버 SAM2
  */
 
 'use client';
 
 import { useState, useCallback } from 'react';
+import { createWorker } from 'tesseract.js';
 import { LayerExtractionResult, TextRegion, ObjectLayer } from '@/types/canvas.types';
 
 export interface UseLayerExtractionReturn {
@@ -90,30 +91,65 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
           console.log('[useLayerExtraction] DataURL length reduced:', slidePngDataUrl.length, '->', resizedDataUrl.length);
         }
 
-        // ============ STAGE 1: 텍스트 추출 (필수) ============
-        console.log('[useLayerExtraction] STAGE 1: Extracting text...');
+        // ============ STAGE 1: 클라이언트 OCR (필수, 빠름) ============
+        console.log('[useLayerExtraction] STAGE 1: Client-side OCR...');
         setProgress(10);
 
-        const textResponse = await fetch('/api/extractLayers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        // Run Tesseract.js in browser
+        const worker = await createWorker('eng+kor', 1, {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              const prog = Math.floor(m.progress * 40); // 10% -> 50%
+              setProgress(10 + prog);
+            }
           },
-          body: JSON.stringify({
-            slidePngDataUrl: resizedDataUrl,
-            imageWidth: resizedWidth,
-            imageHeight: resizedHeight,
-            provider,
-          }),
         });
 
-        if (!textResponse.ok) {
-          throw new Error(`텍스트 추출 실패 (${textResponse.status})`);
-        }
+        const { data } = await worker.recognize(resizedDataUrl);
+        await worker.terminate();
 
-        const textData = await textResponse.json();
-        let textLayers: TextRegion[] = textData.textLayers || [];
-        const textMaskBoxes = textData.textMaskBoxes || [];
+        // Convert Tesseract results to TextRegion[]
+        let textLayers: TextRegion[] = data.words
+          .filter((word) => word.confidence > 15) // 15% confidence threshold
+          .map((word, idx) => ({
+            id: `text_${idx}`,
+            text: word.text,
+            position: {
+              x: word.bbox.x0,
+              y: word.bbox.y0,
+            },
+            size: {
+              width: word.bbox.x1 - word.bbox.x0,
+              height: word.bbox.y1 - word.bbox.y0,
+            },
+            style: {
+              fontFamily: 'Arial',
+              fontSize: word.bbox.y1 - word.bbox.y0,
+              fontWeight: 'normal' as const,
+              fontStyle: 'normal' as const,
+              color: '#000000',
+              rotation: 0,
+              align: 'left' as const,
+              lineHeight: 1.2,
+              underline: false,
+            },
+            confidence: word.confidence,
+          }));
+
+        // Sort text regions (top to bottom, left to right)
+        textLayers.sort((a, b) => {
+          const yDiff = a.position.y - b.position.y;
+          if (Math.abs(yDiff) > 10) return yDiff;
+          return a.position.x - b.position.x;
+        });
+
+        // Create textMaskBoxes for object extraction
+        const textMaskBoxes = textLayers.map((layer) => ({
+          x: layer.position.x,
+          y: layer.position.y,
+          width: layer.size.width,
+          height: layer.size.height,
+        }));
 
         // Scale text layers back to original dimensions
         if (resizedWidth !== imageWidth || resizedHeight !== imageHeight) {
