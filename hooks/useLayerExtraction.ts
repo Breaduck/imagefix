@@ -93,8 +93,8 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
 
         setProgress(10);
 
-        // Auto-retry logic for WARMING_UP (max 3 attempts)
-        const MAX_RETRIES = 3;
+        // Auto-retry logic for WARMING_UP (max 5 attempts)
+        const MAX_RETRIES = 5;
         let retryCount = 0;
         let extractionResult: LayerExtractionResult | null = null;
 
@@ -123,11 +123,6 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
             setProgress(50);
 
             if (!response.ok) {
-              // Handle 504 Gateway Timeout specifically
-              if (response.status === 504) {
-                throw new Error('처리 시간이 초과되었습니다. 이미지 크기를 줄이거나 나중에 다시 시도해주세요.');
-              }
-
               // Try to parse JSON error, fallback to status text
               let errorMessage = 'Layer extraction failed';
               try {
@@ -149,16 +144,17 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
             }
 
             // Check if model is warming up
-            if (extractionResult?.stats?.code === 'WARMING_UP') {
+            if (extractionResult?.stats?.reason === 'WARMING_UP') {
               retryCount++;
-              console.log(`[useLayerExtraction] Model warming up, retry ${retryCount}/${MAX_RETRIES}`);
+              const retryMs = extractionResult.stats.retryAfterMs || 15000;
+              console.log(`[useLayerExtraction] WARMING_UP, retry ${retryCount}/${MAX_RETRIES} after ${retryMs}ms`);
 
               if (retryCount < MAX_RETRIES) {
-                // Wait 30s before retry
-                await new Promise((resolve) => setTimeout(resolve, 30000));
+                // Wait before retry
+                await new Promise((resolve) => setTimeout(resolve, retryMs));
                 continue;
               } else {
-                throw new Error('모델 로딩 시간 초과. 잠시 후 다시 시도해주세요.');
+                throw new Error('SAM2 모델이 아직 준비되지 않았습니다. Modal 계정의 billing limit을 확인하거나 잠시 후 다시 시도해주세요.');
               }
             }
 
@@ -166,10 +162,8 @@ export function useLayerExtraction(): UseLayerExtractionReturn {
             break;
 
           } catch (err) {
-            // Only retry on WARMING_UP, not on other errors
-            if (retryCount === 0 || !(err instanceof Error && err.message.includes('warming up'))) {
-              throw err;
-            }
+            // Don't retry on non-WARMING_UP errors
+            throw err;
           }
         }
 

@@ -65,7 +65,8 @@ export interface LayerExtractionResult {
     textCount: number;
     objectCount: number;
     processingTimeMs: number;
-    reason?: string; // Optional reason (e.g., SEGMENTER_NOT_CONFIGURED, SEGMENTER_BAD_RESPONSE)
+    reason?: string; // Optional reason (e.g., SEGMENTER_NOT_CONFIGURED, WARMING_UP)
     code?: string; // Optional code (e.g., WARMING_UP)
+    retryAfterMs?: number; // Optional retry delay in milliseconds
   };
 }

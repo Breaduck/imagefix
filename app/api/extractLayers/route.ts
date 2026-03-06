@@ -9,6 +9,8 @@ import { TextRegion, ObjectLayer, LayerExtractionResult } from '@/types/canvas.t
 import { convertOCRResultsToTextRegions, filterByConfidence, sortTextRegions } from '@/lib/ocr/text-detector';
 import { createOCRProvider } from '@/lib/ocr/providers';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
@@ -18,7 +20,7 @@ async function extractObjectLayers(
   imagePngDataUrl: string,
   textMaskBoxes: Array<{ x: number; y: number; width: number; height: number }>,
   opts?: Record<string, any>
-): Promise<{ objectLayers: ObjectLayer[]; reason?: string; code?: string }> {
+): Promise<{ objectLayers: ObjectLayer[]; reason?: string; code?: string; retryAfterMs?: number }> {
   const SEGMENTER_URL = process.env.SEGMENTER_URL;
   const SEGMENTER_TOKEN = process.env.SEGMENTER_TOKEN;
 
@@ -28,32 +30,39 @@ async function extractObjectLayers(
   }
 
   try {
-    // Step 1: Check health first
+    // Step 1: Check health first with 5s timeout
     console.log('[ExtractLayers] Checking segmenter health...');
+    const healthController = new AbortController();
+    const healthTimeoutId = setTimeout(() => healthController.abort(), 5000);
+
     const healthResponse = await fetch(`${SEGMENTER_URL}/health`, {
       method: 'GET',
+      signal: healthController.signal,
     });
+
+    clearTimeout(healthTimeoutId);
 
     if (!healthResponse.ok) {
       console.error('[ExtractLayers] Health check failed:', healthResponse.status);
-      return { objectLayers: [], reason: 'SEGMENTER_UNHEALTHY' };
+      return { objectLayers: [], reason: 'WARMING_UP', code: 'WARMING_UP', retryAfterMs: 30000 };
     }
 
     const healthData = await healthResponse.json();
     console.log('[ExtractLayers] Health check:', healthData);
 
-    // If model not loaded, return WARMING_UP
+    // If model not loaded, return WARMING_UP immediately
     if (!healthData.modelLoaded) {
       console.log('[ExtractLayers] Model not loaded, returning WARMING_UP');
       return {
         objectLayers: [],
-        reason: 'Model is loading, please retry in 30 seconds',
+        reason: 'WARMING_UP',
         code: 'WARMING_UP',
+        retryAfterMs: 30000,
       };
     }
 
-    // Step 2: Call extract endpoint with timeout
-    console.log('[ExtractLayers] Calling segmenter at:', SEGMENTER_URL);
+    // Step 2: Call extract endpoint with 25s timeout
+    console.log('[ExtractLayers] Calling segmenter extract...');
     console.log('[ExtractLayers] textMaskBoxes count:', textMaskBoxes.length);
 
     const headers: Record<string, string> = {
@@ -65,7 +74,7 @@ async function extractObjectLayers(
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const response = await fetch(`${SEGMENTER_URL}/extract`, {
       method: 'POST',
@@ -81,21 +90,14 @@ async function extractObjectLayers(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      // Check if it's WARMING_UP status
-      if (response.status === 503) {
-        const errorData = await response.json();
-        if (errorData.code === 'WARMING_UP') {
-          console.log('[ExtractLayers] Model warming up, returning WARMING_UP');
-          return {
-            objectLayers: [],
-            reason: errorData.message || 'Model is loading',
-            code: 'WARMING_UP',
-          };
-        }
-      }
-
       console.error('[ExtractLayers] Segmenter returned error:', response.status);
-      return { objectLayers: [], reason: 'SEGMENTER_BAD_RESPONSE' };
+      // Treat any non-OK as warming up to avoid 504
+      return {
+        objectLayers: [],
+        reason: 'WARMING_UP',
+        code: 'WARMING_UP',
+        retryAfterMs: 15000,
+      };
     }
 
     const data = await response.json();
@@ -103,7 +105,12 @@ async function extractObjectLayers(
     // Validate response shape
     if (!Array.isArray(data.objectLayers)) {
       console.error('[ExtractLayers] Invalid segmenter response shape');
-      return { objectLayers: [], reason: 'SEGMENTER_BAD_RESPONSE' };
+      return {
+        objectLayers: [],
+        reason: 'WARMING_UP',
+        code: 'WARMING_UP',
+        retryAfterMs: 15000,
+      };
     }
 
     console.log('[ExtractLayers] Segmenter returned', data.objectLayers.length, 'objects');
@@ -111,11 +118,21 @@ async function extractObjectLayers(
 
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[ExtractLayers] Segmenter timeout (60s)');
-      return { objectLayers: [], reason: 'SEGMENTER_TIMEOUT' };
+      console.error('[ExtractLayers] Segmenter timeout, returning WARMING_UP');
+      return {
+        objectLayers: [],
+        reason: 'WARMING_UP',
+        code: 'WARMING_UP',
+        retryAfterMs: 15000,
+      };
     }
     console.error('[ExtractLayers] Segmenter call failed:', error);
-    return { objectLayers: [], reason: 'SEGMENTER_BAD_RESPONSE' };
+    return {
+      objectLayers: [],
+      reason: 'WARMING_UP',
+      code: 'WARMING_UP',
+      retryAfterMs: 15000,
+    };
   }
 }
 
@@ -187,7 +204,7 @@ export async function POST(request: NextRequest) {
       height: region.size.height,
     }));
 
-    const { objectLayers, reason, code } = await extractObjectLayers(
+    const { objectLayers, reason, code, retryAfterMs } = await extractObjectLayers(
       slidePngDataUrl,
       textMaskBoxes,
       {
@@ -199,7 +216,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[ExtractLayers] Extracted ${objectLayers.length} object layers`);
     if (reason) {
-      console.log(`[ExtractLayers] Reason: ${reason}`);
+      console.log(`[ExtractLayers] Reason: ${reason}, Code: ${code}`);
     }
 
     // Step 3: 응답 생성
@@ -214,6 +231,7 @@ export async function POST(request: NextRequest) {
         processingTimeMs,
         ...(reason && { reason }),
         ...(code && { code }),
+        ...(retryAfterMs && { retryAfterMs }),
       } as any,
     };
 
